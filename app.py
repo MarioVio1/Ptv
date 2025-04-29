@@ -7,23 +7,36 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Lista dei tuoi URL M3U raw
-m3u_urls = [
-    "https://pastebin.com/raw/2JXd4cDJ",
-    # Aggiungi qui i tuoi URL M3U
-]
+# URL del file di testo con i link M3U raw
+m3u_list_url = "https://pastebin.com/raw/2JXd4cDJ"
 
-# URL dell'EPG italiano (esempio pubblico e legale)
+# URL dell'EPG italiano (pubblico e legale)
 epg_url = "https://raw.githubusercontent.com/iptv-org/epg/master/guides/it.xml"
-# Puoi sostituire con un altro EPG italiano, es. https://epg.goddo.xyz/xmltv.xml
+# Alternativa: https://epg.goddo.xyz/xmltv.xml
 
 # Variabili per memorizzare la playlist M3U e l'EPG
 merged_playlist = "#EXTM3U\n"
 epg_content = ""
 
+def get_m3u_urls():
+    """Recupera l'elenco degli URL M3U dal file di testo remoto."""
+    try:
+        response = requests.get(m3u_list_url, timeout=10)
+        if response.status_code == 200:
+            # Filtra righe vuote e commenti
+            urls = [line.strip() for line in response.text.splitlines() if line.strip() and not line.startswith("#")]
+            return urls
+        else:
+            print(f"Errore nel recupero del file M3U list: {response.status_code}")
+            return []
+    except Exception as e:
+        print(f"Errore nel recupero del file M3U list: {e}")
+        return []
+
 def update_playlist():
     global merged_playlist
     merged_playlist = "#EXTM3U\n"
+    m3u_urls = get_m3u_urls()
     for url in m3u_urls:
         try:
             response = requests.get(url, timeout=10)
@@ -35,7 +48,6 @@ def update_playlist():
                 # Aggiungi informazioni EPG se disponibili
                 for line in lines:
                     if line.startswith("#EXTINF"):
-                        # Aggiungi l'attributo tvg-id se necessario (opzionale)
                         merged_playlist += line + '\n'
                     elif not line.startswith("#"):
                         merged_playlist += line + '\n'
@@ -69,7 +81,7 @@ def run_scheduler():
 threading.Thread(target=run_scheduler, daemon=True).start()
 
 # Rotta per servire la playlist M3U
-@app.route("/playlist.m3u")
+@app.route("/Coconut.m3u")
 def serve_playlist():
     return Response(merged_playlist, mimetype="audio/mpegurl")
 
