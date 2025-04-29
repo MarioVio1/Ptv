@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M3U Playlist Merger</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+        }
+        h1 {
+            color: #333;
+        }
+        .status-box {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .status-box p {
+            margin: 5px 0;
+        }
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .copy-button {
+            background-color: #008CBA;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .copy-button:hover {
+            background-color: #006d93;
+        }
+    </style>
+</head>
+<body>
+    <h1>M3U Playlist Merger</h1>
+    <div class="status-box">
+        <p><strong>Status:</strong> {{ status }}</p>
+        <p><strong>Last Update:</strong> {{ last_update or 'Never' }}</p>
+        <p><strong>Total Channels:</strong> {{ total_channels }}</p>
+        <p><strong>M3U Link:</strong> <a href="{{ m3u_link }}">{{ m3u_link }}</a>
+            <button class="copy-button" onclick="copyToClipboard('{{ m3u_link }}')">Copy</button></p>
+    </div>
+    <a href="/regenerate" class="button">Regenerate Playlist</a>
+    <h2>M3U Sources</h2>
+    <table>
+        <tr>
+            <th>URL</th>
+            <th>Status</th>
+            <th>Channels</th>
+        </tr>
+        {% for url, status, channels in m3u_status %}
+        <tr>
+            <td>{{ url }}</td>
+            <td>{{ status }}</td>
+            <td>{{ channels }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    <script>
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert("Link copied to clipboard!");
+            });
+        }
+    </script>
+</body>
+</html>
