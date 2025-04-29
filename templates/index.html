@@ -9,9 +9,17 @@
             font-family: Arial, sans-serif;
             margin: 20px;
             background-color: #f4f4f4;
+            transition: background-color 0.3s, color 0.3s;
         }
-        h1 {
+        body.dark {
+            background-color: #333;
+            color: #fff;
+        }
+        h1, h2 {
             color: #333;
+        }
+        body.dark h1, body.dark h2 {
+            color: #fff;
         }
         .status-box {
             background-color: #fff;
@@ -19,6 +27,9 @@
             border-radius: 5px;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
             margin-bottom: 20px;
+        }
+        body.dark .status-box {
+            background-color: #444;
         }
         .status-box p {
             margin: 5px 0;
@@ -31,24 +42,40 @@
             text-decoration: none;
             display: inline-block;
             border-radius: 5px;
-            margin: 10px 0;
+            margin: 10px 5px;
         }
         .button:hover {
             background-color: #45a049;
+        }
+        .download-button {
+            background-color: #008CBA;
+        }
+        .download-button:hover {
+            background-color: #006d93;
         }
         table {
             width: 100%;
             border-collapse: collapse;
             background-color: #fff;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        body.dark table {
+            background-color: #444;
         }
         th, td {
             padding: 10px;
             text-align: left;
             border-bottom: 1px solid #ddd;
         }
+        body.dark th, body.dark td {
+            border-bottom: 1px solid #555;
+        }
         th {
             background-color: #f2f2f2;
+        }
+        body.dark th {
+            background-color: #555;
         }
         .copy-button {
             background-color: #008CBA;
@@ -67,18 +94,103 @@
         .success {
             color: green;
         }
+        .notification {
+            background-color: #dff0d8;
+            color: #3c763d;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            display: none;
+        }
+        .notification.error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        body.dark .form-group input, body.dark .form-group textarea {
+            background-color: #555;
+            color: #fff;
+            border-color: #666;
+        }
+        #test-result {
+            margin-top: 10px;
+        }
+        #logs {
+            background-color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+        body.dark #logs {
+            background-color: #444;
+            color: #fff;
+        }
+        .theme-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
+    <img src="https://img.icons8.com/ios-filled/50/000000/sun.png" class="theme-toggle" id="theme-toggle" alt="Toggle Theme">
     <h1>M3U Playlist Merger</h1>
+    {% if update_message %}
+    <div class="notification {{ 'error' if 'Errore' in update_message else 'success' }}">
+        {{ update_message }}
+    </div>
+    {% endif %}
     <div class="status-box">
         <p><strong>Status:</strong> <span class="{{ 'success' if status == 'Playlist aggiornata' else 'error' }}">{{ status }}</span></p>
         <p><strong>Last Update:</strong> {{ last_update or 'Never' }}</p>
         <p><strong>Total Channels:</strong> {{ total_channels }}</p>
+        <p><strong>Valid Channels:</strong> {{ "%.1f" % valid_percentage }}%</p>
+        <p><strong>Update Time:</strong> {{ "%.2f" % update_time }} seconds</p>
         <p><strong>M3U Link:</strong> <a href="{{ m3u_link }}">{{ m3u_link }}</a>
             <button class="copy-button" onclick="copyToClipboard('{{ m3u_link }}')">Copy</button></p>
     </div>
     <a href="/regenerate" class="button">Regenerate Playlist</a>
+    <a href="/download" class="button download-button">Download M3U</a>
+
+    <h2>Configure EPG</h2>
+    <div class="form-group">
+        <label for="epg_url">EPG URL:</label>
+        <input type="text" id="epg_url" value="{{ epg_url }}" placeholder="Enter EPG URL">
+        <button onclick="setEpg()" class="button">Set EPG</button>
+    </div>
+
+    <h2>Test M3U URL</h2>
+    <div class="form-group">
+        <label for="test_url">M3U URL:</label>
+        <input type="text" id="test_url" placeholder="Enter M3U URL to test">
+        <button onclick="testM3u()" class="button">Test URL</button>
+        <div id="test-result"></div>
+    </div>
+
+    <h2>Update Pastebin</h2>
+    <div class="form-group">
+        <label for="pastebin_urls">Pastebin M3U URLs (one per line):</label>
+        <textarea id="pastebin_urls" rows="5" placeholder="Enter M3U URLs"></textarea>
+        <button onclick="updatePastebin()" class="button">Update Pastebin</button>
+        <div id="pastebin-result"></div>
+    </div>
+
     <h2>M3U Sources</h2>
     <table>
         <tr>
@@ -94,12 +206,145 @@
         </tr>
         {% endfor %}
     </table>
+
+    <h2>Channels</h2>
+    <div class="form-group">
+        <label for="channel_filter">Filter Channels:</label>
+        <input type="text" id="channel_filter" onkeyup="filterChannels()" placeholder="Search by name or source">
+    </div>
+    <table id="channel_table">
+        <tr>
+            <th>Name</th>
+            <th>Source</th>
+            <th>Group</th>
+            <th>Valid</th>
+        </tr>
+        {% for channel in channels %}
+        <tr>
+            <td>{{ channel.name }}</td>
+            <td>{{ channel.source }}</td>
+            <td>{{ channel.group }}</td>
+            <td>{{ 'Yes' if channel.valid else 'No' }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h2>Logs</h2>
+    <div id="logs"></div>
+
     <script>
         function copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(() => {
                 alert("Link copied to clipboard!");
             });
         }
+
+        function filterChannels() {
+            const filter = document.getElementById('channel_filter').value.toLowerCase();
+            const table = document.getElementById('channel_table');
+            const rows = table.getElementsByTagName('tr');
+            for (let i = 1; i < rows.length; i++) {
+                const cells = rows[i].getElementsByTagName('td');
+                const name = cells[0].textContent.toLowerCase();
+                const source = cells[1].textContent.toLowerCase();
+                rows[i].style.display = (name.includes(filter) || source.includes(filter)) ? '' : 'none';
+            }
+        }
+
+        async function testM3u() {
+            const url = document.getElementById('test_url').value;
+            const resultDiv = document.getElementById('test-result');
+            resultDiv.innerHTML = 'Testing...';
+            try {
+                const response = await fetch('/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `test_url=${encodeURIComponent(url)}`
+                });
+                const data = await response.json();
+                resultDiv.innerHTML = `Status: ${data.status}, Channels: ${data.channels}`;
+            } catch (error) {
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        }
+
+        async function updatePastebin() {
+            const urls = document.getElementById('pastebin_urls').value;
+            const resultDiv = document.getElementById('pastebin-result');
+            resultDiv.innerHTML = 'Updating Pastebin...';
+            try {
+                const response = await fetch('/update_pastebin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `pastebin_urls=${encodeURIComponent(urls)}`
+                });
+                const data = await response.json();
+                resultDiv.innerHTML = data.message || data.error;
+            } catch (error) {
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        }
+
+        async function setEpg() {
+            const url = document.getElementById('epg_url').value;
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            try {
+                const response = await fetch('/set_epg', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `epg_url=${encodeURIComponent(url)}`
+                });
+                const data = await response.json();
+                notification.className += ' success';
+                notification.innerText = data.message;
+            } catch (error) {
+                notification.className += ' error';
+                notification.innerText = `Error: ${error.message}`;
+            }
+            document.body.insertBefore(notification, document.body.firstChild);
+            notification.style.display = 'block';
+            setTimeout(() => { notification.style.display = 'none'; }, 5000);
+        }
+
+        async function fetchLogs() {
+            try {
+                const response = await fetch('/logs');
+                const data = await response.json();
+                document.getElementById('logs').innerHTML = data.logs.join('<br>');
+            } catch (error) {
+                document.getElementById('logs').innerHTML = 'Error fetching logs';
+            }
+        }
+
+        // Aggiorna i log ogni 10 secondi
+        setInterval(fetchLogs, 10000);
+        fetchLogs();
+
+        // Gestione tema chiaro/scuro
+        const toggle = document.getElementById('theme-toggle');
+        toggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark');
+            toggle.src = document.body.classList.contains('dark') ?
+                'https://img.icons8.com/ios-filled/50/ffffff/moon-symbol.png' :
+                'https://img.icons8.com/ios-filled/50/000000/sun.png';
+            localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+        });
+
+        // Carica il tema salvato
+        if (localStorage.getItem('theme') === 'dark') {
+            document.body.classList.add('dark');
+            toggle.src = 'https://img.icons8.com/ios-filled/50/ffffff/moon-symbol.png';
+        }
+
+        // Mostra la notifica e nascondila dopo 5 secondi
+        window.onload = function() {
+            const notification = document.querySelector('.notification');
+            if (notification) {
+                notification.style.display = 'block';
+                setTimeout(() => { notification.style.display = 'none'; }, 5000);
+            }
+        };
     </script>
 </body>
 </html>
