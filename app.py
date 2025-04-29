@@ -34,10 +34,15 @@ pastebin_user_key = None
 
 # Configurazione Redis
 CACHE_FILE = "/tmp/playlist.m3u"  # Percorso per fallback su disco
+redis_client = None
 try:
+    redis_host = os.getenv("REDIS_HOST")
+    redis_port = os.getenv("REDIS_PORT", "6379")
+    if not redis_host:
+        raise ValueError("REDIS_HOST non configurato")
     redis_client = redis.Redis(
-        host=os.getenv("REDIS_HOST", "localhost"),
-        port=int(os.getenv("REDIS_PORT", 6379)),
+        host=redis_host,
+        port=int(redis_port),
         decode_responses=True,
         socket_timeout=5,
         socket_connect_timeout=5
@@ -45,11 +50,8 @@ try:
     # Test connessione
     redis_client.ping()
     add_log("Connessione a Redis riuscita")
-except ConnectionError as e:
+except (ConnectionError, ValueError, RedisError) as e:
     add_log(f"Errore connessione Redis: {e}. Cache disabilitata, uso fallback su disco")
-    redis_client = None  # Fallback senza cache
-except RedisError as e:
-    add_log(f"Errore Redis: {e}. Cache disabilitata, uso fallback su disco")
     redis_client = None
 
 # Variabili per lo stato
@@ -485,5 +487,9 @@ def get_logs():
         return jsonify({"error": f"Errore: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    update_playlist()
-    app.run(host="0.0.0.0", port=5000)
+    try:
+        update_playlist()
+        app.run(host="0.0.0.0", port=5000)
+    except Exception as e:
+        add_log(f"Errore avvio applicazione: {e}")
+        raise
