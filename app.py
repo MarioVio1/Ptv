@@ -10,9 +10,7 @@ import io
 app = Flask(__name__)
 
 # Lista degli URL M3U integrati direttamente
-m3u_urls = [
-    "http://inthemix.altervista.org/tv.m3u",
-    "https://mvajro-premiumt.hf.space/generated-m3u",
+m3u_urls = ["https://mvajro-premiumt.hf.space/generated-m3u",
     "https://github.com/ciccioxm3/omg/raw/refs/heads/main/itaevents.m3u8",
     "https://github.com/ciccioxm3/omg/raw/refs/heads/main/channels_italy.m3u8",
     "https://github.com/ciccioxm3/omg/raw/refs/heads/main/247ita.m3u8",
