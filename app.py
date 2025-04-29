@@ -25,7 +25,7 @@ pastebin_url = "https://pastebin.com/raw/2JXd4cDJ"
 pastebin_api_key = os.getenv("PASTEBIN_API_KEY", "hORVwXV_xxvjnW4B-mhabsU71Da32Idk")
 pastebin_dev_key = os.getenv("PASTEBIN_DEV_KEY", "hORVwXV_xxvjnW4B-mhabsU71Da32Idk")
 pastebin_username = os.getenv("PASTEBIN_USERNAME", "Mariovio")
-pastebin_password = os.getenv("PASTEBIN_PASSWORD", "jinjo1-wagjev-hoTdon")
+pastebin_password = os.getenv("PASTEBIN_PASSWORD")
 pastebin_paste_key = "2JXd4cDJ"
 pastebin_user_key = None
 
@@ -240,6 +240,10 @@ def update_pastebin():
         add_log("Errore: Nessun URL fornito per aggiornare il Pastebin")
         return jsonify({"error": "Nessun URL fornito"}), 400
 
+    if not pastebin_password:
+        add_log("Errore: PASTEBIN_PASSWORD non configurato")
+        return jsonify({"error": "PASTEBIN_PASSWORD non configurato"}), 500
+
     try:
         if not pastebin_user_key:
             login_data = {
@@ -438,5 +442,4 @@ if __name__ == "__main__":
         update_playlist()
         app.run(host="0.0.0.0", port=5000)
     except Exception as e:
-        add_log(f"Errore avvio applicazione: {e}")
-        raise
+        add_log(f"
