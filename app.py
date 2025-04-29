@@ -17,7 +17,7 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configurazione Pastebin (usa variabili d'ambiente su Render)
+# Configurazione Pastebin
 pastebin_url = "https://pastebin.com/raw/2JXd4cDJ"
 pastebin_api_key = os.getenv("PASTEBIN_API_KEY", "hORVwXV_xxvjnW4B-mhabsU71Da32Idk")
 pastebin_dev_key = os.getenv("PASTEBIN_DEV_KEY", "hORVwXV_xxvjnW4B-mhabsU71Da32Idk")
@@ -25,6 +25,10 @@ pastebin_username = os.getenv("PASTEBIN_USERNAME", "Mariovio")
 pastebin_password = os.getenv("PASTEBIN_PASSWORD", "jinjo1-wagjev-hoTdon")
 pastebin_paste_key = "2JXd4cDJ"
 pastebin_user_key = None
+
+# Configurazione Telegram
+telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
 # Variabili per lo stato
 merged_playlist = "#EXTM3U\n"
@@ -45,12 +49,20 @@ def create_session():
     session.mount("https://", HTTPAdapter(max_retries=retries))
     return session
 
-def add_log(message):
-    """Aggiunge un messaggio ai log, mantenendo solo gli ultimi 50."""
+def add_log(message, notify_telegram=False):
+    """Aggiunge un messaggio ai log e opzionalmente invia a Telegram."""
     global logs
     logs.append(f"{datetime.now()}: {message}")
     logs = logs[-50:]
     logger.info(message)
+    if notify_telegram and telegram_bot_token and telegram_chat_id:
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{telegram_bot_token}/sendMessage",
+                json={"chat_id": telegram_chat_id, "text": message}
+            )
+        except Exception as e:
+            logger.error(f"Errore nell'invio della notifica Telegram: {e}")
 
 def get_m3u_urls():
     """Recupera la lista degli URL M3U dal Pastebin."""
@@ -70,8 +82,13 @@ def get_m3u_urls():
         return []
 
 def validate_channel_url(url):
-    """Verifica se un URL di un canale è accessibile (disabilitato per velocità)."""
-    return True  # Temporaneamente disabilitato per evitare timeout
+    """Verifica se un URL di un canale è accessibile."""
+    try:
+        session = create_session()
+        response = session.head(url, timeout=10, allow_redirects=True)
+        return response.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
 
 def update_playlist():
     """Aggiorna la playlist M3U unendo gli URL dal Pastebin."""
@@ -85,7 +102,7 @@ def update_playlist():
     m3u_urls = get_m3u_urls()
 
     if not m3u_urls:
-        add_log("Nessun URL M3U valido recuperato dal Pastebin")
+        add_log("Nessun URL M3U valido recuperato dal Pastebin", notify_telegram=True)
         m3u_status.append(("Nessun URL", "Errore: Pastebin non accessibile", 0))
         update_message = "Errore: Pastebin non accessibile"
         update_time = time.time() - start_time
@@ -160,7 +177,7 @@ def update_playlist():
     update_time = time.time() - start_time
     valid_percentage = (valid_channels / total_attempts * 100) if total_attempts > 0 else 0
     update_message = f"Playlist rigenerata: {total_channels} canali ({valid_percentage:.1f}% funzionanti)"
-    add_log(f"Playlist aggiornata: {last_update} (Canali totali: {total_channels}, Tempo: {update_time:.2f}s)")
+    add_log(f"Playlist aggiornata: {last_update} (Canali totali: {total_channels}, Tempo: {update_time:.2f}s)", notify_telegram=True)
 
 @app.route("/test", methods=["POST"])
 def test_m3u():
@@ -184,7 +201,7 @@ def test_m3u():
             return jsonify({"status": f"Errore: Stato {response.status_code}", "channels": 0})
     except requests.exceptions.RequestException as e:
         add_log(f"Test fallito: Errore {e} per {url}")
-        return jsonify({"status": f"Erro բնույթ: {str(e)}", "channels": 0})
+        return jsonify({"status": f"Errore: {str(e)}", "channels": 0})
     except Exception as e:
         add_log(f"Errore imprevisto nel test di {url}: {e}")
         return jsonify({"status": f"Errore imprevisto: {str(e)}", "channels": 0}), 500
@@ -198,7 +215,6 @@ def update_pastebin():
         return jsonify({"error": "Nessun URL fornito"}), 400
 
     try:
-        # Login a Pastebin (se necessario)
         if not pastebin_user_key:
             login_data = {
                 "api_dev_key": pastebin_dev_key,
@@ -210,33 +226,32 @@ def update_pastebin():
                 pastebin_user_key = response.text
                 add_log("Login a Pastebin riuscito")
             else:
-                add_log(f"Errore nel login a Pastebin: {response.text}")
+                add_log(f"Errore nel login a Pastebin: {response.text}", notify_telegram=True)
                 return jsonify({"error": f"Errore nel login a Pastebin: {response.text}"}), 500
 
-        # Aggiorna il paste
         paste_data = {
             "api_option": "paste",
             "api_dev_key": pastebin_dev_key,
             "api_user_key": pastebin_user_key,
             "api_paste_key": pastebin_paste_key,
             "api_paste_code": new_urls,
-            "api_paste_private": "1",  # Unlisted
+            "api_paste_private": "1",
             "api_paste_name": "M3U URLs",
             "api_paste_format": "text"
         }
         response = requests.post("https://pastebin.com/api/api_post.php", data=paste_data)
         if response.status_code == 200 and "pastebin.com" in response.text:
-            add_log("Pastebin aggiornato con successo")
+            add_log("Pastebin aggiornato con successo", notify_telegram=True)
             update_playlist()
             return jsonify({"message": "Pastebin aggiornato con successo"})
         else:
-            add_log(f"Errore nell'aggiornamento del Pastebin: {response.text}")
+            add_log(f"Errore nell'aggiornamento del Pastebin: {response.text}", notify_telegram=True)
             return jsonify({"error": f"Errore nell'aggiornamento del Pastebin: {response.text}"}), 500
     except requests.exceptions.RequestException as e:
-        add_log(f"Errore nell'aggiornamento del Pastebin: {e}")
+        add_log(f"Errore nell'aggiornamento del Pastebin: {e}", notify_telegram=True)
         return jsonify({"error": str(e)}), 500
     except Exception as e:
-        add_log(f"Errore imprevisto nell'aggiornamento del Pastebin: {e}")
+        add_log(f"Errore imprevisto nell'aggiornamento del Pastebin: {e}", notify_telegram=True)
         return jsonify({"error": f"Errore imprevisto: {str(e)}"}), 500
 
 @app.route("/set_epg", methods=["POST"])
@@ -245,12 +260,41 @@ def set_epg():
     try:
         new_epg_url = request.form.get("epg_url", "").strip()
         epg_url = new_epg_url
-        add_log(f"URL EPG configurato: {epg_url}")
+        add_log(f"URL EPG configurato: {epg_url}", notify_telegram=True)
         update_playlist()
         return jsonify({"message": f"URL EPG configurato: {epg_url}"})
     except Exception as e:
         add_log(f"Errore nella configurazione dell'EPG: {e}")
         return jsonify({"error": f"Errore: {str(e)}"}), 500
+
+@app.route("/check_channel", methods=["POST"])
+def check_channel():
+    url = request.form.get("url")
+    if not url:
+        return jsonify({"error": "URL non fornito"}), 400
+    status = validate_channel_url(url)
+    add_log(f"Controllo canale {url}: {'Online' if status else 'Offline'}")
+    return jsonify({"status": "Online" if status else "Offline"})
+
+@app.route("/export", methods=["POST"])
+def export_playlist():
+    selected_urls = request.form.getlist("selected_urls")
+    if not selected_urls:
+        return Response("Errore: Nessun canale selezionato.", mimetype="text/plain")
+    custom_playlist = f"#EXTM3U tvg-url=\"{epg_url}\"\n" if epg_url else "#EXTM3U\n"
+    for channel in channels:
+        if channel["url"] in selected_urls:
+            extinf_line = next((line for line in merged_playlist.splitlines() if channel["url"] in line and line.startswith("#EXTINF")), None)
+            if extinf_line:
+                custom_playlist += extinf_line + '\n'
+                custom_playlist += channel["url"] + '\n'
+    buffer = io.StringIO(custom_playlist)
+    return send_file(
+        io.BytesIO(buffer.getvalue().encode('utf-8')),
+        as_attachment=True,
+        download_name="Custom_Coconut.m3u",
+        mimetype="audio/mpegurl"
+    )
 
 schedule.every(1).hours.do(update_playlist)
 
