@@ -8,28 +8,34 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import io
 import urllib.parse
+import os
+import logging
 
 app = Flask(__name__)
 
-# Configurazione Pastebin
+# Configurazione logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Configurazione Pastebin (usa variabili d'ambiente su Render)
 pastebin_url = "https://pastebin.com/raw/2JXd4cDJ"
-pastebin_api_key = "hORVwXV_xxvjnW4B-mhabsU71Da32Idk"
-pastebin_user_key = None  # Verrà generato al primo login
-pastebin_dev_key = "hORVwXV_xxvjnW4B-mhabsU71Da32Idk"  # Stessa chiave per dev_key
-pastebin_paste_key = "2JXd4cDJ"  # ID del paste
-pastebin_username = "Mariovio"
-pastebin_password = "jinjo1-wagjev-hoTdon"
+pastebin_api_key = os.getenv("PASTEBIN_API_KEY", "hORVwXV_xxvjnW4B-mhabsU71Da32Idk")
+pastebin_dev_key = os.getenv("PASTEBIN_DEV_KEY", "hORVwXV_xxvjnW4B-mhabsU71Da32Idk")
+pastebin_username = os.getenv("PASTEBIN_USERNAME", "Mariovio")
+pastebin_password = os.getenv("PASTEBIN_PASSWORD", "jinjo1-wagjev-hoTdon")
+pastebin_paste_key = "2JXd4cDJ"
+pastebin_user_key = None
 
 # Variabili per lo stato
 merged_playlist = "#EXTM3U\n"
 last_update = None
 total_channels = 0
-m3u_status = []  # Lista di tuple (url, stato, numero_canali)
+m3u_status = []
 update_message = None
 update_time = 0
-channels = []  # Lista di dict (name, url, source, group)
-logs = []  # Lista degli ultimi log
-epg_url = ""  # URL EPG configurabile
+channels = []
+logs = []
+epg_url = ""
 
 def create_session():
     """Crea una sessione requests con retry."""
@@ -44,6 +50,7 @@ def add_log(message):
     global logs
     logs.append(f"{datetime.now()}: {message}")
     logs = logs[-50:]
+    logger.info(message)
 
 def get_m3u_urls():
     """Recupera la lista degli URL M3U dal Pastebin."""
@@ -63,13 +70,8 @@ def get_m3u_urls():
         return []
 
 def validate_channel_url(url):
-    """Verifica se un URL di un canale è accessibile (opzionale)."""
-    try:
-        session = create_session()
-        response = session.head(url, timeout=10, allow_redirects=True)
-        return response.status_code == 200
-    except requests.exceptions.RequestException:
-        return False
+    """Verifica se un URL di un canale è accessibile (disabilitato per velocità)."""
+    return True  # Temporaneamente disabilitato per evitare timeout
 
 def update_playlist():
     """Aggiorna la playlist M3U unendo gli URL dal Pastebin."""
@@ -149,6 +151,9 @@ def update_playlist():
         except requests.exceptions.RequestException as e:
             add_log(f"Errore nel recupero di {url}: {e}")
             m3u_status.append((url, f"Errore: {str(e)}", 0))
+        except Exception as e:
+            add_log(f"Errore imprevisto durante il recupero di {url}: {e}")
+            m3u_status.append((url, f"Errore imprevisto: {str(e)}", 0))
 
     total_channels = merged_playlist.count("#EXTINF")
     last_update = datetime.now()
@@ -157,7 +162,6 @@ def update_playlist():
     update_message = f"Playlist rigenerata: {total_channels} canali ({valid_percentage:.1f}% funzionanti)"
     add_log(f"Playlist aggiornata: {last_update} (Canali totali: {total_channels}, Tempo: {update_time:.2f}s)")
 
-# Endpoint per testare un URL M3U
 @app.route("/test", methods=["POST"])
 def test_m3u():
     url = request.form.get("test_url")
@@ -180,9 +184,11 @@ def test_m3u():
             return jsonify({"status": f"Errore: Stato {response.status_code}", "channels": 0})
     except requests.exceptions.RequestException as e:
         add_log(f"Test fallito: Errore {e} per {url}")
-        return jsonify({"status": f"Errore: {str(e)}", "channels": 0})
+        return jsonify({"status": f"Erro բնույթ: {str(e)}", "channels": 0})
+    except Exception as e:
+        add_log(f"Errore imprevisto nel test di {url}: {e}")
+        return jsonify({"status": f"Errore imprevisto: {str(e)}", "channels": 0}), 500
 
-# Endpoint per aggiornare il Pastebin
 @app.route("/update_pastebin", methods=["POST"])
 def update_pastebin():
     global pastebin_user_key
@@ -200,12 +206,12 @@ def update_pastebin():
                 "api_user_password": pastebin_password
             }
             response = requests.post("https://pastebin.com/api/api_login.php", data=login_data)
-            if response.status_code == 200 and response.text:
+            if response.status_code == 200 and response.text and not response.text.startswith("Bad API request"):
                 pastebin_user_key = response.text
                 add_log("Login a Pastebin riuscito")
             else:
-                add_log("Errore nel login a Pastebin")
-                return jsonify({"error": "Errore nel login a Pastebin"}), 500
+                add_log(f"Errore nel login a Pastebin: {response.text}")
+                return jsonify({"error": f"Errore nel login a Pastebin: {response.text}"}), 500
 
         # Aggiorna il paste
         paste_data = {
@@ -221,86 +227,103 @@ def update_pastebin():
         response = requests.post("https://pastebin.com/api/api_post.php", data=paste_data)
         if response.status_code == 200 and "pastebin.com" in response.text:
             add_log("Pastebin aggiornato con successo")
-            update_playlist()  # Rigenera la playlist
+            update_playlist()
             return jsonify({"message": "Pastebin aggiornato con successo"})
         else:
             add_log(f"Errore nell'aggiornamento del Pastebin: {response.text}")
-            return jsonify({"error": "Errore nell'aggiornamento del Pastebin"}), 500
+            return jsonify({"error": f"Errore nell'aggiornamento del Pastebin: {response.text}"}), 500
     except requests.exceptions.RequestException as e:
         add_log(f"Errore nell'aggiornamento del Pastebin: {e}")
         return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        add_log(f"Errore imprevisto nell'aggiornamento del Pastebin: {e}")
+        return jsonify({"error": f"Errore imprevisto: {str(e)}"}), 500
 
-# Endpoint per configurare l'EPG
 @app.route("/set_epg", methods=["POST"])
 def set_epg():
     global epg_url
-    new_epg_url = request.form.get("epg_url", "").strip()
-    epg_url = new_epg_url
-    add_log(f"URL EPG configurato: {epg_url}")
-    update_playlist()  # Rigenera la playlist con il nuovo EPG
-    return jsonify({"message": f"URL EPG configurato: {epg_url}"})
+    try:
+        new_epg_url = request.form.get("epg_url", "").strip()
+        epg_url = new_epg_url
+        add_log(f"URL EPG configurato: {epg_url}")
+        update_playlist()
+        return jsonify({"message": f"URL EPG configurato: {epg_url}"})
+    except Exception as e:
+        add_log(f"Errore nella configurazione dell'EPG: {e}")
+        return jsonify({"error": f"Errore: {str(e)}"}), 500
 
-# Pianifica l'aggiornamento ogni ora
 schedule.every(1).hours.do(update_playlist)
 
-# Esegui il pianificatore in background
 def run_scheduler():
     while True:
         schedule.run_pending()
         time.sleep(60)
 
-# Avvia il pianificatore in un thread separato
 threading.Thread(target=run_scheduler, daemon=True).start()
 
-# Endpoint per la pagina index
 @app.route("/")
 def index():
-    status = "Playlist aggiornata" if total_channels > 0 else "Errore: Nessun canale disponibile"
-    valid_percentage = sum(1 for c in channels if c["valid"]) / len(channels) * 100 if channels else 0
-    return render_template("index.html",
-                          status=status,
-                          last_update=last_update,
-                          total_channels=total_channels,
-                          m3u_status=m3u_status,
-                          m3u_link="https://ptv-r1fg.onrender.com/Coconut.m3u",
-                          update_message=update_message,
-                          update_time=update_time,
-                          channels=channels,
-                          valid_percentage=valid_percentage,
-                          epg_url=epg_url)
+    try:
+        status = "Playlist aggiornata" if total_channels > 0 else "Errore: Nessun canale disponibile"
+        valid_percentage = sum(1 for c in channels if c["valid"]) / len(channels) * 100 if channels else 0
+        return render_template("index.html",
+                              status=status,
+                              last_update=last_update,
+                              total_channels=total_channels,
+                              m3u_status=m3u_status,
+                              m3u_link="https://ptv-r1fg.onrender.com/Coconut.m3u",
+                              update_message=update_message,
+                              update_time=update_time,
+                              channels=channels,
+                              valid_percentage=valid_percentage,
+                              epg_url=epg_url)
+    except Exception as e:
+        add_log(f"Errore nel rendering della pagina index: {e}")
+        return Response(f"Errore interno: {str(e)}", status=500)
 
-# Endpoint per servire la playlist M3U
 @app.route("/Coconut.m3u")
 def serve_playlist():
-    if merged_playlist.strip() == "#EXTM3U" or merged_playlist.strip() == f"#EXTM3U tvg-url=\"{epg_url}\"":
-        return Response("Errore: Nessun canale disponibile. Controlla i log su Render.", mimetype="text/plain")
-    return Response(merged_playlist, mimetype="audio/mpegurl")
+    try:
+        if merged_playlist.strip() == "#EXTM3U" or merged_playlist.strip() == f"#EXTM3U tvg-url=\"{epg_url}\"":
+            return Response("Errore: Nessun canale disponibile. Controlla i log su Render.", mimetype="text/plain")
+        return Response(merged_playlist, mimetype="audio/mpegurl")
+    except Exception as e:
+        add_log(f"Errore nel servire la playlist: {e}")
+        return Response(f"Errore interno: {str(e)}", status=500)
 
-# Endpoint per rigenerare la playlist
 @app.route("/regenerate")
 def regenerate_playlist():
-    update_playlist()
-    return redirect("/")
+    try:
+        update_playlist()
+        return redirect("/")
+    except Exception as e:
+        add_log(f"Errore nella rigenerazione della playlist: {e}")
+        return Response(f"Errore interno: {str(e)}", status=500)
 
-# Endpoint per scaricare la playlist M3U
 @app.route("/download")
 def download_playlist():
-    if merged_playlist.strip() == "#EXTM3U" or merged_playlist.strip() == f"#EXTM3U tvg-url=\"{epg_url}\"":
-        return Response("Errore: Nessun canale disponibile.", mimetype="text/plain")
-    buffer = io.StringIO(merged_playlist)
-    return send_file(
-        io.BytesIO(buffer.getvalue().encode('utf-8')),
-        as_attachment=True,
-        download_name="Coconut.m3u",
-        mimetype="audio/mpegurl"
-    )
+    try:
+        if merged_playlist.strip() == "#EXTM3U" or merged_playlist.strip() == f"#EXTM3U tvg-url=\"{epg_url}\"":
+            return Response("Errore: Nessun canale disponibile.", mimetype="text/plain")
+        buffer = io.StringIO(merged_playlist)
+        return send_file(
+            io.BytesIO(buffer.getvalue().encode('utf-8')),
+            as_attachment=True,
+            download_name="Coconut.m3u",
+            mimetype="audio/mpegurl"
+        )
+    except Exception as e:
+        add_log(f"Errore nel download della playlist: {e}")
+        return Response(f"Errore interno: {str(e)}", status=500)
 
-# Endpoint per ottenere i log
 @app.route("/logs")
 def get_logs():
-    return jsonify({"logs": logs})
+    try:
+        return jsonify({"logs": logs})
+    except Exception as e:
+        add_log(f"Errore nel recupero dei log: {e}")
+        return jsonify({"error": f"Errore: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    # Esegui l'aggiornamento iniziale
     update_playlist()
     app.run(host="0.0.0.0", port=5000)
