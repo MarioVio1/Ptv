@@ -43,15 +43,6 @@ def get_m3u_urls():
         print(f"Errore nel recupero del Pastebin: {e}")
         return []
 
-def validate_channel_url(url):
-    """Verifica se un URL di un canale è accessibile."""
-    try:
-        session = create_session()
-        response = session.head(url, timeout=10, allow_redirects=True)
-        return response.status_code == 200
-    except requests.exceptions.RequestException:
-        return False
-
 def update_playlist():
     """Aggiorna la playlist M3U unendo gli URL dal Pastebin."""
     global merged_playlist, last_update, total_channels, m3u_status
@@ -76,24 +67,35 @@ def update_playlist():
                     print(f"Errore: Contenuto vuoto da {url}")
                     m3u_status.append((url, "Vuoto", 0))
                     continue
-                if lines[0].startswith("#EXTM3U"):
-                    lines = lines[1:]
                 channel_count = 0
-                for i in range(len(lines)):
+                i = 0
+                while i < len(lines):
                     line = lines[i].strip()
                     if line.startswith("#EXTINF"):
-                        if i + 1 < len(lines):
-                            next_line = lines[i + 1].strip()
+                        # Cerca l'URL del canale nelle righe successive
+                        j = i + 1
+                        channel_url = None
+                        while j < len(lines):
+                            next_line = lines[j].strip()
                             if next_line and not next_line.startswith("#"):
-                                if validate_channel_url(next_line) and next_line not in seen_urls:
-                                    merged_playlist += line + '\n'
-                                    merged_playlist += next_line + '\n'
-                                    seen_urls.add(next_line)
-                                    channel_count += 1
-                    elif line.startswith("#EXTVLCOPT"):
-                        merged_playlist += line + '\n'
-                print(f"Successo: Aggiunto contenuto da {url} (Canali validi: {channel_count})")
-                m3u_status.append((url, "Funzionante", channel_count))
+                                channel_url = next_line
+                                break
+                            j += 1
+                        if channel_url and channel_url not in seen_urls:
+                            merged_playlist += line + '\n'
+                            merged_playlist += channel_url + '\n'
+                            seen_urls.add(channel_url)
+                            channel_count += 1
+                            i = j  # Salta alla riga dell'URL
+                        else:
+                            if not channel_url:
+                                print(f"Nessun URL valido trovato dopo #EXTINF: {line}")
+                            else:
+                                print(f"Canale duplicato scartato: {channel_url}")
+                    i += 1
+                status = "Funzionante" if channel_count > 0 else "Nessun canale valido"
+                print(f"Successo: Aggiunto contenuto da {url} (Canali: {channel_count})")
+                m3u_status.append((url, status, channel_count))
             else:
                 print(f"Errore nel recupero di {url}: Stato {response.status_code}")
                 m3u_status.append((url, f"Errore: Stato {response.status_code}", 0))
