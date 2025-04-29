@@ -9,8 +9,7 @@ app = Flask(__name__)
 
 # Lista dei tuoi URL M3U raw
 m3u_urls = [
-    "http://example.com/playlist1.m3u",
-    "http://example.com/playlist2.m3u",
+    "https://pastebin.com/raw/2JXd4cDJ",
     # Aggiungi qui i tuoi URL M3U
 ]
 
