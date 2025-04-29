@@ -10,8 +10,13 @@ import io
 import urllib.parse
 import os
 import logging
+import redis
+from flask_compress import Compress
+from prometheus_flask_exporter import PrometheusMetrics
 
 app = Flask(__name__)
+Compress(app)  # Abilita compressione Gzip
+metrics = PrometheusMetrics(app)  # Metriche Prometheus
 
 # Configurazione logging
 logging.basicConfig(level=logging.INFO)
@@ -26,9 +31,12 @@ pastebin_password = os.getenv("PASTEBIN_PASSWORD", "jinjo1-wagjev-hoTdon")
 pastebin_paste_key = "2JXd4cDJ"
 pastebin_user_key = None
 
-# Configurazione Telegram
-telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+# Configurazione Redis
+redis_client = redis.Redis(
+    host=os.getenv("REDIS_HOST", "localhost"),
+    port=int(os.getenv("REDIS_PORT", 6379)),
+    decode_responses=True
+)
 
 # Variabili per lo stato
 merged_playlist = "#EXTM3U\n"
@@ -49,20 +57,12 @@ def create_session():
     session.mount("https://", HTTPAdapter(max_retries=retries))
     return session
 
-def add_log(message, notify_telegram=False):
-    """Aggiunge un messaggio ai log e opzionalmente invia a Telegram."""
+def add_log(message):
+    """Aggiunge un messaggio ai log."""
     global logs
     logs.append(f"{datetime.now()}: {message}")
     logs = logs[-50:]
     logger.info(message)
-    if notify_telegram and telegram_bot_token and telegram_chat_id:
-        try:
-            requests.post(
-                f"https://api.telegram.org/bot{telegram_bot_token}/sendMessage",
-                json={"chat_id": telegram_chat_id, "text": message}
-            )
-        except Exception as e:
-            logger.error(f"Errore nell'invio della notifica Telegram: {e}")
 
 def get_m3u_urls():
     """Recupera la lista degli URL M3U dal Pastebin."""
@@ -82,13 +82,16 @@ def get_m3u_urls():
         return []
 
 def validate_channel_url(url):
-    """Verifica se un URL di un canale è accessibile."""
+    """Verifica se un URL di un canale è accessibile e misura la latenza."""
     try:
         session = create_session()
+        start_time = time.time()
         response = session.head(url, timeout=10, allow_redirects=True)
-        return response.status_code == 200
+        latency = (time.time() - start_time) * 1000  # ms
+        valid = response.status_code == 200
+        return valid, {"latency": latency}
     except requests.exceptions.RequestException:
-        return False
+        return False, {"latency": None}
 
 def update_playlist():
     """Aggiorna la playlist M3U unendo gli URL dal Pastebin."""
@@ -102,10 +105,11 @@ def update_playlist():
     m3u_urls = get_m3u_urls()
 
     if not m3u_urls:
-        add_log("Nessun URL M3U valido recuperato dal Pastebin", notify_telegram=True)
+        add_log("Nessun URL M3U valido recuperato dal Pastebin")
         m3u_status.append(("Nessun URL", "Errore: Pastebin non accessibile", 0))
         update_message = "Errore: Pastebin non accessibile"
         update_time = time.time() - start_time
+        redis_client.set("playlist", merged_playlist, ex=3600)
         return
 
     valid_channels = 0
@@ -136,21 +140,27 @@ def update_playlist():
                         if channel_url and channel_url not in seen_urls:
                             name = line.split(',', 1)[-1] if ',' in line else "Unknown"
                             group = "Default"
+                            language = "Unknown"
                             if 'group-title="' in line:
                                 group = line.split('group-title="')[1].split('"')[0]
+                            if 'tvg-language="' in line:
+                                language = line.split('tvg-language="')[1].split('"')[0]
                             merged_playlist += line + '\n'
                             merged_playlist += channel_url + '\n'
                             seen_urls.add(channel_url)
+                            valid, quality = validate_channel_url(channel_url)
                             channels.append({
                                 "name": name,
                                 "url": channel_url,
                                 "source": url,
                                 "group": group,
-                                "valid": validate_channel_url(channel_url)
+                                "language": language,
+                                "valid": valid,
+                                "quality": quality
                             })
                             channel_count += 1
                             total_attempts += 1
-                            if channels[-1]["valid"]:
+                            if valid:
                                 valid_channels += 1
                             i = j
                         else:
@@ -177,7 +187,8 @@ def update_playlist():
     update_time = time.time() - start_time
     valid_percentage = (valid_channels / total_attempts * 100) if total_attempts > 0 else 0
     update_message = f"Playlist rigenerata: {total_channels} canali ({valid_percentage:.1f}% funzionanti)"
-    add_log(f"Playlist aggiornata: {last_update} (Canali totali: {total_channels}, Tempo: {update_time:.2f}s)", notify_telegram=True)
+    add_log(f"Playlist aggiornata: {last_update} (Canali totali: {total_channels}, Tempo: {update_time:.2f}s)")
+    redis_client.set("playlist", merged_playlist, ex=3600)  # Cache per 1 ora
 
 @app.route("/test", methods=["POST"])
 def test_m3u():
@@ -226,7 +237,7 @@ def update_pastebin():
                 pastebin_user_key = response.text
                 add_log("Login a Pastebin riuscito")
             else:
-                add_log(f"Errore nel login a Pastebin: {response.text}", notify_telegram=True)
+                add_log(f"Errore nel login a Pastebin: {response.text}")
                 return jsonify({"error": f"Errore nel login a Pastebin: {response.text}"}), 500
 
         paste_data = {
@@ -241,17 +252,17 @@ def update_pastebin():
         }
         response = requests.post("https://pastebin.com/api/api_post.php", data=paste_data)
         if response.status_code == 200 and "pastebin.com" in response.text:
-            add_log("Pastebin aggiornato con successo", notify_telegram=True)
+            add_log("Pastebin aggiornato con successo")
             update_playlist()
             return jsonify({"message": "Pastebin aggiornato con successo"})
         else:
-            add_log(f"Errore nell'aggiornamento del Pastebin: {response.text}", notify_telegram=True)
+            add_log(f"Errore nell'aggiornamento del Pastebin: {response.text}")
             return jsonify({"error": f"Errore nell'aggiornamento del Pastebin: {response.text}"}), 500
     except requests.exceptions.RequestException as e:
-        add_log(f"Errore nell'aggiornamento del Pastebin: {e}", notify_telegram=True)
+        add_log(f"Errore nell'aggiornamento del Pastebin: {e}")
         return jsonify({"error": str(e)}), 500
     except Exception as e:
-        add_log(f"Errore imprevisto nell'aggiornamento del Pastebin: {e}", notify_telegram=True)
+        add_log(f"Errore imprevisto nell'aggiornamento del Pastebin: {e}")
         return jsonify({"error": f"Errore imprevisto: {str(e)}"}), 500
 
 @app.route("/set_epg", methods=["POST"])
@@ -260,21 +271,37 @@ def set_epg():
     try:
         new_epg_url = request.form.get("epg_url", "").strip()
         epg_url = new_epg_url
-        add_log(f"URL EPG configurato: {epg_url}", notify_telegram=True)
+        add_log(f"URL EPG configurato: {epg_url}")
         update_playlist()
         return jsonify({"message": f"URL EPG configurato: {epg_url}"})
     except Exception as e:
         add_log(f"Errore nella configurazione dell'EPG: {e}")
         return jsonify({"error": f"Errore: {str(e)}"}), 500
 
+@app.route("/validate_epg", methods=["POST"])
+def validate_epg():
+    epg_url = request.form.get("epg_url")
+    try:
+        session = create_session()
+        response = session.get(epg_url, timeout=10)
+        if response.status_code == 200:
+            add_log(f"EPG valido: {epg_url}")
+            return jsonify({"message": "EPG valido", "size": len(response.text)})
+        else:
+            add_log(f"EPG non valido: Stato {response.status_code}")
+            return jsonify({"error": f"Stato {response.status_code}"}), 400
+    except Exception as e:
+        add_log(f"Errore validazione EPG: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/check_channel", methods=["POST"])
 def check_channel():
     url = request.form.get("url")
     if not url:
         return jsonify({"error": "URL non fornito"}), 400
-    status = validate_channel_url(url)
-    add_log(f"Controllo canale {url}: {'Online' if status else 'Offline'}")
-    return jsonify({"status": "Online" if status else "Offline"})
+    valid, quality = validate_channel_url(url)
+    add_log(f"Controllo canale {url}: {'Online' if valid else 'Offline'}, Latenza: {quality['latency'] or 'N/A'} ms")
+    return jsonify({"status": "Online" if valid else "Offline", "quality": quality})
 
 @app.route("/export", methods=["POST"])
 def export_playlist():
@@ -293,6 +320,26 @@ def export_playlist():
         io.BytesIO(buffer.getvalue().encode('utf-8')),
         as_attachment=True,
         download_name="Custom_Coconut.m3u",
+        mimetype="audio/mpegurl"
+    )
+
+@app.route("/export_by_group", methods=["POST"])
+def export_by_group():
+    group = request.form.get("group")
+    if not group:
+        return Response("Errore: Nessun gruppo selezionato.", mimetype="text/plain")
+    custom_playlist = f"#EXTM3U tvg-url=\"{epg_url}\"\n" if epg_url else "#EXTM3U\n"
+    for channel in channels:
+        if channel["group"] == group:
+            extinf_line = next((line for line in merged_playlist.splitlines() if channel["url"] in line and line.startswith("#EXTINF")), None)
+            if extinf_line:
+                custom_playlist += extinf_line + '\n'
+                custom_playlist += channel["url"] + '\n'
+    buffer = io.StringIO(custom_playlist)
+    return send_file(
+        io.BytesIO(buffer.getvalue().encode('utf-8')),
+        as_attachment=True,
+        download_name=f"Coconut_{group}.m3u",
         mimetype="audio/mpegurl"
     )
 
@@ -328,6 +375,9 @@ def index():
 @app.route("/Coconut.m3u")
 def serve_playlist():
     try:
+        cached = redis_client.get("playlist")
+        if cached:
+            return Response(cached, mimetype="audio/mpegurl")
         if merged_playlist.strip() == "#EXTM3U" or merged_playlist.strip() == f"#EXTM3U tvg-url=\"{epg_url}\"":
             return Response("Errore: Nessun canale disponibile. Controlla i log su Render.", mimetype="text/plain")
         return Response(merged_playlist, mimetype="audio/mpegurl")
