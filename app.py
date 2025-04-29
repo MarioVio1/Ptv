@@ -7,11 +7,8 @@ from datetime import datetime
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import io
-import urllib.parse
 import os
 import logging
-import redis
-from redis.exceptions import ConnectionError, RedisError
 from flask_compress import Compress
 from prometheus_flask_exporter import PrometheusMetrics
 
@@ -32,27 +29,8 @@ pastebin_password = os.getenv("PASTEBIN_PASSWORD", "jinjo1-wagjev-hoTdon")
 pastebin_paste_key = "2JXd4cDJ"
 pastebin_user_key = None
 
-# Configurazione Redis
-CACHE_FILE = "/tmp/playlist.m3u"  # Percorso per fallback su disco
-redis_client = None
-try:
-    redis_host = os.getenv("REDIS_HOST")
-    redis_port = os.getenv("REDIS_PORT", "6379")
-    if not redis_host:
-        raise ValueError("REDIS_HOST non configurato")
-    redis_client = redis.Redis(
-        host=redis_host,
-        port=int(redis_port),
-        decode_responses=True,
-        socket_timeout=5,
-        socket_connect_timeout=5
-    )
-    # Test connessione
-    redis_client.ping()
-    add_log("Connessione a Redis riuscita")
-except (ConnectionError, ValueError, RedisError) as e:
-    add_log(f"Errore connessione Redis: {e}. Cache disabilitata, uso fallback su disco")
-    redis_client = None
+# Configurazione cache su disco
+CACHE_FILE = "/tmp/playlist.m3u"
 
 # Variabili per lo stato
 merged_playlist = "#EXTM3U\n"
@@ -81,45 +59,24 @@ def add_log(message):
     logger.info(message)
 
 def save_to_cache():
-    """Salva la playlist in cache (Redis o disco)."""
+    """Salva la playlist su disco."""
     try:
-        if redis_client:
-            redis_client.set("playlist", merged_playlist, ex=3600)  # Cache per 1 ora
-            add_log("Playlist salvata in cache Redis")
-        else:
-            with open(CACHE_FILE, "w") as f:
-                f.write(merged_playlist)
-            add_log("Playlist salvata su disco come fallback")
-    except RedisError as e:
-        add_log(f"Errore salvataggio cache Redis: {e}")
         with open(CACHE_FILE, "w") as f:
             f.write(merged_playlist)
-        add_log("Playlist salvata su disco come fallback")
+        add_log("Playlist salvata su disco")
     except Exception as e:
-        add_log(f"Errore salvataggio cache: {e}")
+        add_log(f"Errore salvataggio cache su disco: {e}")
 
 def get_from_cache():
-    """Recupera la playlist dalla cache (Redis o disco)."""
+    """Recupera la playlist dal disco."""
     try:
-        if redis_client:
-            cached = redis_client.get("playlist")
-            if cached:
-                add_log("Playlist caricata da cache Redis")
-                return cached
-        if os.path.exists(CACHE_FILE):
-            with open(CACHE_FILE, "r") as f:
-                add_log("Playlist caricata da disco")
-                return f.read()
-        return None
-    except RedisError as e:
-        add_log(f"Errore recupero cache Redis: {e}")
         if os.path.exists(CACHE_FILE):
             with open(CACHE_FILE, "r") as f:
                 add_log("Playlist caricata da disco")
                 return f.read()
         return None
     except Exception as e:
-        add_log(f"Errore recupero cache: {e}")
+        add_log(f"Errore recupero cache da disco: {e}")
         return None
 
 def get_m3u_urls():
@@ -400,16 +357,6 @@ def export_by_group():
         download_name=f"Coconut_{group}.m3u",
         mimetype="audio/mpegurl"
     )
-
-@app.route("/redis_status")
-def redis_status():
-    """Verifica lo stato della connessione Redis."""
-    try:
-        if redis_client and redis_client.ping():
-            return jsonify({"status": "Active"})
-        return jsonify({"status": "Inactive"})
-    except RedisError:
-        return jsonify({"status": "Error"})
 
 schedule.every(1).hours.do(update_playlist)
 
