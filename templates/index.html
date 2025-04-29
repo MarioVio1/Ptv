@@ -2,234 +2,33 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>M3U Playlist Merger</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f4f4f4;
-            transition: background-color 0.3s, color 0.3s;
-        }
-        body.dark {
-            background-color: #333;
-            color: #fff;
-        }
-        h1, h2 {
-            color: #333;
-        }
-        body.dark h1, body.dark h2 {
-            color: #fff;
-        }
-        .status-box {
-            background-color: #fff;
-            padding: 15px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        body.dark .status-box {
-            background-color: #444;
-        }
-        .status-box p {
-            margin: 5px 0;
-        }
-        .button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            border-radius: 5px;
-            margin: 10px 5px;
-        }
-        .button:hover {
-            background-color: #45a049;
-        }
-        .download-button {
-            background-color: #008CBA;
-        }
-        .download-button:hover {
-            background-color: #006d93;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background-color: #fff;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        body.dark table {
-            background-color: #444;
-        }
-        th, td {
-            padding: 10px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-        body.dark th, body.dark td {
-            border-bottom: 1px solid #555;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-        body.dark th {
-            background-color: #555;
-        }
-        .copy-button, .preview-button, .fullscreen-button {
-            background-color: #008CBA;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            cursor: pointer;
-            border-radius: 3px;
-        }
-        .copy-button:hover, .preview-button:hover, .fullscreen-button:hover {
-            background-color: #006d93;
-        }
-        .error {
-            color: red;
-        }
-        .success {
-            color: green;
-        }
-        .notification {
-            background-color: #dff0d8;
-            color: #3c763d;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            display: none;
-        }
-        .notification.error {
-            background-color: #f2dede;
-            color: #a94442;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-        }
-        .form-group input, .form-group textarea, .form-group select {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        body.dark .form-group input, body.dark .form-group textarea, body.dark .form-group select {
-            background-color: #555;
-            color: #fff;
-            border-color: #666;
-        }
-        #test-result, #pastebin-result, #epg-result {
-            margin-top: 10px;
-        }
-        #logs {
-            background-color: #fff;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            max-height: 200px;
-            overflow-y: auto;
-            font-family: monospace;
-        }
-        body.dark #logs {
-            background-color: #444;
-            color: #fff;
-        }
-        .theme-toggle {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            cursor: pointer;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-content {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 5px;
-            max-width: 80%;
-            text-align: center;
-        }
-        body.dark .modal-content {
-            background-color: #444;
-            color: #fff;
-        }
-        .modal-content video {
-            width: 100%;
-            max-height: 500px;
-        }
-        .close {
-            position: absolute;
-            top: 10px;
-            right: 20px;
-            font-size: 24px;
-            cursor: pointer;
-        }
-        #performance-chart {
-            max-width: 600px;
-            margin: 20px 0;
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .error { color: red; }
+        .success { color: green; }
+        .log-section { margin-top: 20px; }
+        button { padding: 10px; margin: 5px; }
+        textarea { width: 100%; height: 100px; }
     </style>
 </head>
 <body>
-    <img src="https://img.icons8.com/ios-filled/50/000000/sun.png" class="theme-toggle" id="theme-toggle" alt="Toggle Theme">
     <h1>M3U Playlist Merger</h1>
-    {% if update_message %}
-    <div class="notification {{ 'error' if 'Errore' in update_message else 'success' }}">
-        {{ update_message }}
-    </div>
-    {% endif %}
-    <div class="status-box">
-        <p><strong>Status:</strong> <span class="{{ 'success' if status == 'Playlist aggiornata' else 'error' }}">{{ status }}</span></p>
-        <p><strong>Last Update:</strong> {{ last_update or 'Never' }}</p>
-        <p><strong>Total Channels:</strong> {{ total_channels }}</p>
-        <p><strong>Valid Channels:</strong> {{ "%.1f" % valid_percentage }}%</p>
-        <p><strong>Update Time:</strong> {{ "%.2f" % update_time }} seconds</p>
-        <p><strong>M3U Link:</strong> <a href="{{ m3u_link }}">{{ m3u_link }}</a>
-            <button class="copy-button" onclick="copyToClipboard('{{ m3u_link }}')">Copy</button></p>
-    </div>
-    <a href="/regenerate" class="button">Regenerate Playlist</a>
-    <a href="/download" class="button download-button">Download M3U</a>
+    <p><strong>Status:</strong> <span class="{{ 'success' if total_channels > 0 else 'error' }}">{{ status }}</span></p>
+    <p><strong>Last Update:</strong> {{ last_update or 'Never' }}</p>
+    <p><strong>Total Channels:</strong> {{ total_channels }}</p>
+    <p><strong>Valid Channels:</strong> {{ valid_percentage|round(1) }}%</p>
+    <p><strong>M3U Link:</strong> <a href="{{ m3u_link }}">{{ m3u_link }}</a></p>
+    <p><strong>Update Message:</strong> {{ update_message or 'Not updated' }}</p>
+    <p><strong>Update Time:</strong> {{ update_time|round(2) }} seconds</p>
+    <p><strong>EPG URL:</strong> {{ epg_url or 'Not set' }}</p>
 
-    <h2>Configure EPG</h2>
-    <div class="form-group">
-        <label for="epg_url">EPG URL:</label>
-        <input type="text" id="epg_url" value="{{ epg_url }}" placeholder="Enter EPG URL">
-        <button onclick="setEpg()" class="button">Set EPG</button>
-        <button onclick="validateEpg()" class="button">Validate EPG</button>
-        <div id="epg-result"></div>
-    </div>
-
-    <h2>Test M3U URL</h2>
-    <div class="form-group">
-        <label for="test_url">M3U URL:</label>
-        <input type="text" id="test_url" placeholder="Enter M3U URL to test">
-        <button onclick="testM3u()" class="button">Test URL</button>
-        <div id="test-result"></div>
-    </div>
-
-    <h2>Update Pastebin</h2>
-    <div class="form-group">
-        <label for="pastebin_urls">Pastebin M3U URLs (one per line):</label>
-        <textarea id="pastebin_urls" rows="5" placeholder="Enter M3U URLs"></textarea>
-        <button onclick="updatePastebin()" class="button">Update Pastebin</button>
-        <div id="pastebin-result"></div>
-    </div>
+    <form action="/regenerate" method="get">
+        <button type="submit">Regenerate Playlist</button>
+    </form>
 
     <h2>M3U Sources</h2>
     <table>
@@ -238,328 +37,34 @@
             <th>Status</th>
             <th>Channels</th>
         </tr>
-        {% for url, status, channels in m3u_status %}
+        {% for url, status, count in m3u_status %}
         <tr>
-            <td><a href="{{ url }}" target="_blank">{{ url }}</a></td>
+            <td>{{ url }}</td>
             <td class="{{ 'success' if status == 'Funzionante' else 'error' }}">{{ status }}</td>
-            <td>{{ channels }}</td>
+            <td>{{ count }}</td>
         </tr>
         {% endfor %}
     </table>
 
-    <h2>Channels</h2>
-    <div class="form-group">
-        <label>Filter Channels:</label>
-        <input type="text" id="name_filter" onkeyup="filterChannels()" placeholder="Search by name or source">
-        <select id="group_filter" onchange="filterChannels()">
-            <option value="">All Groups</option>
-            {% for group in channels|map(attribute='group')|unique %}
-            <option value="{{ group }}">{{ group }}</option>
-            {% endfor %}
-        </select>
-        <select id="status_filter" onchange="filterChannels()">
-            <option value="">All Status</option>
-            <option value="Online">Online</option>
-            <option value="Offline">Offline</option>
-        </select>
-        <select id="language_filter" onchange="filterChannels()">
-            <option value="">All Languages</option>
-            {% for language in channels|map(attribute='language')|unique %}
-            <option value="{{ language }}">{{ language }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="form-group">
-        <label>Sort Channels:</label>
-        <button onclick="sortTable('name')" class="button">By Name</button>
-        <button onclick="sortTable('group')" class="button">By Group</button>
-        <button onclick="sortTable('status')" class="button">By Status</button>
-        <button onclick="sortTable('source')" class="button">By Source</button>
-    </div>
-    <form id="export-form" method="POST" action="/export">
-        <button type="submit" class="button">Export Selected Channels</button>
-        <select id="group_export" name="group">
-            <option value="">Select Group to Export</option>
-            {% for group in channels|map(attribute='group')|unique %}
-            <option value="{{ group }}">{{ group }}</option>
-            {% endfor %}
-        </select>
-        <button type="button" onclick="exportByGroup()" class="button">Export Group</button>
-        <table id="channel_table">
-            <tr>
-                <th>Select</th>
-                <th>Name</th>
-                <th>Source</th>
-                <th>Group</th>
-                <th>Language</th>
-                <th>Status</th>
-                <th>Latency (ms)</th>
-                <th>Preview</th>
-            </tr>
-            {% for channel in channels %}
-            <tr>
-                <td><input type="checkbox" name="selected_urls" value="{{ channel.url }}"></td>
-                <td>{{ channel.name }}</td>
-                <td>{{ channel.source }}</td>
-                <td>{{ channel.group }}</td>
-                <td>{{ channel.language }}</td>
-                <td class="status" data-url="{{ channel.url }}">{{ 'Online' if channel.valid else 'Offline' }}</td>
-                <td>{{ channel.quality.latency|round(1) if channel.quality.latency else 'N/A' }}</td>
-                <td><button type="button" class="preview-button" onclick="previewChannel('{{ channel.url }}')">Preview</button></td>
-            </tr>
-            {% endfor %}
-        </table>
+    <h2>Update Pastebin</h2>
+    <form action="/update_pastebin" method="post">
+        <textarea name="pastebin_urls" placeholder="Enter M3U URLs (one per line)">{{ '\n'.join([url for url, _, _ in m3u_status]) }}</textarea>
+        <button type="submit">Update Pastebin</button>
     </form>
 
-    <h2>Performance Metrics</h2>
-    <canvas id="performance-chart"></canvas>
+    <h2>Set EPG</h2>
+    <form action="/set_epg" method="post">
+        <input type="text" name="epg_url" value="{{ epg_url }}" placeholder="Enter EPG URL">
+        <button type="submit">Set EPG</button>
+    </form>
 
     <h2>Logs</h2>
-    <div id="logs"></div>
-
-    <div id="preview-modal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeModal()">×</span>
-            <video id="preview-player" controls>
-                <source id="preview-source" src="" type="application/x-mpegURL">
-                Your browser does not support the video tag.
-            </video>
-            <button class="fullscreen-button" onclick="goFullScreen()">Full Screen</button>
-        </div>
+    <div class="log-section">
+        <ul>
+            {% for log in logs %}
+                <li>{{ log }}</li>
+            {% endfor %}
+        </ul>
     </div>
-
-    <script>
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                alert("Link copied to clipboard!");
-            });
-        }
-
-        function filterChannels() {
-            const nameFilter = document.getElementById('name_filter').value.toLowerCase();
-            const groupFilter = document.getElementById('group_filter').value.toLowerCase();
-            const statusFilter = document.getElementById('status_filter').value;
-            const languageFilter = document.getElementById('language_filter').value.toLowerCase();
-            const table = document.getElementById('channel_table');
-            const rows = table.getElementsByTagName('tr');
-            for (let i = 1; i < rows.length; i++) {
-                const cells = rows[i].getElementsByTagName('td');
-                const name = cells[1].textContent.toLowerCase();
-                const source = cells[2].textContent.toLowerCase();
-                const group = cells[3].textContent.toLowerCase();
-                const language = cells[4].textContent.toLowerCase();
-                const status = cells[5].textContent;
-                const nameMatch = name.includes(nameFilter) || source.includes(nameFilter);
-                const groupMatch = groupFilter === "" || group === groupFilter;
-                const statusMatch = statusFilter === "" || status === statusFilter;
-                const languageMatch = languageFilter === "" || language === languageFilter;
-                rows[i].style.display = (nameMatch && groupMatch && statusMatch && languageMatch) ? '' : 'none';
-            }
-        }
-
-        function sortTable(criterion) {
-            const table = document.getElementById('channel_table');
-            const rows = Array.from(table.rows).slice(1);
-            const index = { 'name': 1, 'group': 3, 'status': 5, 'source': 2 }[criterion];
-            rows.sort((a, b) => {
-                const aVal = a.cells[index].textContent;
-                const bVal = b.cells[index].textContent;
-                return aVal.localeCompare(bVal);
-            });
-            table.tBodies[0].append(...rows);
-        }
-
-        async function testM3u() {
-            const url = document.getElementById('test_url').value;
-            const resultDiv = document.getElementById('test-result');
-            resultDiv.innerHTML = 'Testing...';
-            try {
-                const response = await fetch('/test', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `test_url=${encodeURIComponent(url)}`
-                });
-                const data = await response.json();
-                resultDiv.innerHTML = `Status: ${data.status}, Channels: ${data.channels}`;
-            } catch (error) {
-                resultDiv.innerHTML = `Error: ${error.message}`;
-            }
-        }
-
-        async function updatePastebin() {
-            const urls = document.getElementById('pastebin_urls').value;
-            const resultDiv = document.getElementById('pastebin-result');
-            resultDiv.innerHTML = 'Updating Pastebin...';
-            try {
-                const response = await fetch('/update_pastebin', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `pastebin_urls=${encodeURIComponent(urls)}`
-                });
-                const data = await response.json();
-                resultDiv.innerHTML = data.message || data.error;
-            } catch (error) {
-                resultDiv.innerHTML = `Error: ${error.message}`;
-            }
-        }
-
-        async function setEpg() {
-            const url = document.getElementById('epg_url').value;
-            const notification = document.createElement('div');
-            notification.className = 'notification';
-            try {
-                const response = await fetch('/set_epg', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `epg_url=${encodeURIComponent(url)}`
-                });
-                const data = await response.json();
-                notification.className += ' success';
-                notification.innerText = data.message;
-            } catch (error) {
-                notification.className += ' error';
-                notification.innerText = `Error: ${error.message}`;
-            }
-            document.body.insertBefore(notification, document.body.firstChild);
-            notification.style.display = 'block';
-            setTimeout(() => { notification.style.display = 'none'; }, 5000);
-        }
-
-        async function validateEpg() {
-            const url = document.getElementById('epg_url').value;
-            const resultDiv = document.getElementById('epg-result');
-            resultDiv.innerHTML = 'Validating EPG...';
-            try {
-                const response = await fetch('/validate_epg', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `epg_url=${encodeURIComponent(url)}`
-                });
-                const data = await response.json();
-                resultDiv.innerHTML = data.message || data.error;
-            } catch (error) {
-                resultDiv.innerHTML = `Error: ${error.message}`;
-            }
-        }
-
-        async function exportByGroup() {
-            const group = document.getElementById('group_export').value;
-            if (!group) {
-                alert("Select a group to export");
-                return;
-            }
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '/export_by_group';
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'group';
-            input.value = group;
-            form.appendChild(input);
-            document.body.appendChild(form);
-            form.submit();
-        }
-
-        async function fetchLogs() {
-            try {
-                const response = await fetch('/logs');
-                const data = await response.json();
-                document.getElementById('logs').innerHTML = data.logs.join('<br>');
-            } catch (error) {
-                document.getElementById('logs').innerHTML = 'Error fetching logs';
-            }
-        }
-
-        async function checkChannelStatus() {
-            const statusCells = document.querySelectorAll('.status');
-            for (let cell of statusCells) {
-                const url = cell.getAttribute('data-url');
-                try {
-                    const response = await fetch('/check_channel', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: `url=${encodeURIComponent(url)}`
-                    });
-                    const data = await response.json();
-                    cell.textContent = data.status;
-                    const latencyCell = cell.nextElementSibling;
-                    latencyCell.textContent = data.quality.latency ? data.quality.latency.toFixed(1) : 'N/A';
-                } catch (error) {
-                    cell.textContent = 'Error';
-                    cell.nextElementSibling.textContent = 'N/A';
-                }
-            }
-        }
-
-        function previewChannel(url) {
-            const modal = document.getElementById('preview-modal');
-            const source = document.getElementById('preview-source');
-            const player = document.getElementById('preview-player');
-            source.src = url;
-            player.load();
-            modal.style.display = 'flex';
-        }
-
-        function closeModal() {
-            const modal = document.getElementById('preview-modal');
-            const player = document.getElementById('preview-player');
-            player.pause();
-            modal.style.display = 'none';
-        }
-
-        function goFullScreen() {
-            const player = document.getElementById('preview-player');
-            if (player.requestFullscreen) {
-                player.requestFullscreen();
-            }
-        }
-
-        setInterval(fetchLogs, 10000);
-        setInterval(checkChannelStatus, 300000); // Ogni 5 minuti
-        fetchLogs();
-        checkChannelStatus();
-
-        const toggle = document.getElementById('theme-toggle');
-        toggle.addEventListener('click', () => {
-            document.body.classList.toggle('dark');
-            toggle.src = document.body.classList.contains('dark') ?
-                'https://img.icons8.com/ios-filled/50/ffffff/moon-symbol.png' :
-                'https://img.icons8.com/ios-filled/50/000000/sun.png';
-            localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
-        });
-
-        if (localStorage.getItem('theme') === 'dark') {
-            document.body.classList.add('dark');
-            toggle.src = 'https://img.icons8.com/ios-filled/50/ffffff/moon-symbol.png';
-        }
-
-        window.onload = function() {
-            const notification = document.querySelector('.notification');
-            if (notification) {
-                notification.style.display = 'block';
-                setTimeout(() => { notification.style.display = 'none'; }, 5000);
-            }
-
-            // Grafico delle prestazioni
-            const ctx = document.getElementById('performance-chart').getContext('2d');
-            new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: ['Last Update', 'Previous'],
-                    datasets: [{
-                        label: 'Update Time (s)',
-                        data: [{{ update_time }}, {{ update_time }}], // Dati di esempio
-                        borderColor: '#4CAF50',
-                        fill: false
-                    }]
-                },
-                options: {
-                    scales: {
-                        y: { beginAtZero: true }
-                    }
-                }
-            });
-        };
-    </script>
 </body>
 </html>
