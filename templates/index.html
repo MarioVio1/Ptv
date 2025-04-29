@@ -77,7 +77,7 @@
         body.dark th {
             background-color: #555;
         }
-        .copy-button {
+        .copy-button, .preview-button {
             background-color: #008CBA;
             color: white;
             border: none;
@@ -85,7 +85,7 @@
             cursor: pointer;
             border-radius: 3px;
         }
-        .copy-button:hover {
+        .copy-button:hover, .preview-button:hover {
             background-color: #006d93;
         }
         .error {
@@ -124,7 +124,7 @@
             color: #fff;
             border-color: #666;
         }
-        #test-result {
+        #test-result, #pastebin-result {
             margin-top: 10px;
         }
         #logs {
@@ -144,6 +144,39 @@
             position: absolute;
             top: 20px;
             right: 20px;
+            cursor: pointer;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            max-width: 80%;
+            text-align: center;
+        }
+        body.dark .modal-content {
+            background-color: #444;
+            color: #fff;
+        }
+        .modal-content video {
+            width: 100%;
+            max-height: 500px;
+        }
+        .close {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 24px;
             cursor: pointer;
         }
     </style>
@@ -212,25 +245,42 @@
         <label for="channel_filter">Filter Channels:</label>
         <input type="text" id="channel_filter" onkeyup="filterChannels()" placeholder="Search by name or source">
     </div>
-    <table id="channel_table">
-        <tr>
-            <th>Name</th>
-            <th>Source</th>
-            <th>Group</th>
-            <th>Valid</th>
-        </tr>
-        {% for channel in channels %}
-        <tr>
-            <td>{{ channel.name }}</td>
-            <td>{{ channel.source }}</td>
-            <td>{{ channel.group }}</td>
-            <td>{{ 'Yes' if channel.valid else 'No' }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+    <form id="export-form" method="POST" action="/export">
+        <button type="submit" class="button">Export Selected Channels</button>
+        <table id="channel_table">
+            <tr>
+                <th>Select</th>
+                <th>Name</th>
+                <th>Source</th>
+                <th>Group</th>
+                <th>Status</th>
+                <th>Preview</th>
+            </tr>
+            {% for channel in channels %}
+            <tr>
+                <td><input type="checkbox" name="selected_urls" value="{{ channel.url }}"></td>
+                <td>{{ channel.name }}</td>
+                <td>{{ channel.source }}</td>
+                <td>{{ channel.group }}</td>
+                <td class="status" data-url="{{ channel.url }}">{{ 'Online' if channel.valid else 'Offline' }}</td>
+                <td><button type="button" class="preview-button" onclick="previewChannel('{{ channel.url }}')">Preview</button></td>
+            </tr>
+            {% endfor %}
+        </table>
+    </form>
 
     <h2>Logs</h2>
     <div id="logs"></div>
+
+    <div id="preview-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">×</span>
+            <video id="preview-player" controls>
+                <source id="preview-source" src="" type="application/x-mpegURL">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+    </div>
 
     <script>
         function copyToClipboard(text) {
@@ -245,8 +295,8 @@
             const rows = table.getElementsByTagName('tr');
             for (let i = 1; i < rows.length; i++) {
                 const cells = rows[i].getElementsByTagName('td');
-                const name = cells[0].textContent.toLowerCase();
-                const source = cells[1].textContent.toLowerCase();
+                const name = cells[1].textContent.toLowerCase();
+                const source = cells[2].textContent.toLowerCase();
                 rows[i].style.display = (name.includes(filter) || source.includes(filter)) ? '' : 'none';
             }
         }
@@ -317,11 +367,45 @@
             }
         }
 
-        // Aggiorna i log ogni 10 secondi
-        setInterval(fetchLogs, 10000);
-        fetchLogs();
+        async function checkChannelStatus() {
+            const statusCells = document.querySelectorAll('.status');
+            for (let cell of statusCells) {
+                const url = cell.getAttribute('data-url');
+                try {
+                    const response = await fetch('/check_channel', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `url=${encodeURIComponent(url)}`
+                    });
+                    const data = await response.json();
+                    cell.textContent = data.status;
+                } catch (error) {
+                    cell.textContent = 'Error';
+                }
+            }
+        }
 
-        // Gestione tema chiaro/scuro
+        function previewChannel(url) {
+            const modal = document.getElementById('preview-modal');
+            const source = document.getElementById('preview-source');
+            const player = document.getElementById('preview-player');
+            source.src = url;
+            player.load();
+            modal.style.display = 'flex';
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('preview-modal');
+            const player = document.getElementById('preview-player');
+            player.pause();
+            modal.style.display = 'none';
+        }
+
+        setInterval(fetchLogs, 10000);
+        setInterval(checkChannelStatus, 300000); // Ogni 5 minuti
+        fetchLogs();
+        checkChannelStatus();
+
         const toggle = document.getElementById('theme-toggle');
         toggle.addEventListener('click', () => {
             document.body.classList.toggle('dark');
@@ -331,13 +415,11 @@
             localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
         });
 
-        // Carica il tema salvato
         if (localStorage.getItem('theme') === 'dark') {
             document.body.classList.add('dark');
             toggle.src = 'https://img.icons8.com/ios-filled/50/ffffff/moon-symbol.png';
         }
 
-        // Mostra la notifica e nascondila dopo 5 secondi
         window.onload = function() {
             const notification = document.querySelector('.notification');
             if (notification) {
