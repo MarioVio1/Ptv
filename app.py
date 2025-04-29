@@ -43,6 +43,15 @@ def get_m3u_urls():
         print(f"Errore nel recupero del Pastebin: {e}")
         return []
 
+def validate_channel_url(url):
+    """Verifica se un URL di un canale è accessibile."""
+    try:
+        session = create_session()
+        response = session.head(url, timeout=10, allow_redirects=True)
+        return response.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
 def update_playlist():
     """Aggiorna la playlist M3U unendo gli URL dal Pastebin."""
     global merged_playlist, last_update, total_channels, m3u_status
@@ -73,17 +82,17 @@ def update_playlist():
                 for i in range(len(lines)):
                     line = lines[i].strip()
                     if line.startswith("#EXTINF"):
-                        merged_playlist += line + '\n'
-                        channel_count += 1
                         if i + 1 < len(lines):
                             next_line = lines[i + 1].strip()
                             if next_line and not next_line.startswith("#"):
-                                if next_line not in seen_urls:
-                                    seen_urls.add(next_line)
+                                if validate_channel_url(next_line) and next_line not in seen_urls:
+                                    merged_playlist += line + '\n'
                                     merged_playlist += next_line + '\n'
+                                    seen_urls.add(next_line)
+                                    channel_count += 1
                     elif line.startswith("#EXTVLCOPT"):
                         merged_playlist += line + '\n'
-                print(f"Successo: Aggiunto contenuto da {url} (Canali: {channel_count})")
+                print(f"Successo: Aggiunto contenuto da {url} (Canali validi: {channel_count})")
                 m3u_status.append((url, "Funzionante", channel_count))
             else:
                 print(f"Errore nel recupero di {url}: Stato {response.status_code}")
