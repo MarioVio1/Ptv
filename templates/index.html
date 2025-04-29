@@ -61,12 +61,18 @@
         .copy-button:hover {
             background-color: #006d93;
         }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
     </style>
 </head>
 <body>
     <h1>M3U Playlist Merger</h1>
     <div class="status-box">
-        <p><strong>Status:</strong> {{ status }}</p>
+        <p><strong>Status:</strong> <span class="{{ 'success' if status == 'Playlist aggiornata' else 'error' }}">{{ status }}</span></p>
         <p><strong>Last Update:</strong> {{ last_update or 'Never' }}</p>
         <p><strong>Total Channels:</strong> {{ total_channels }}</p>
         <p><strong>M3U Link:</strong> <a href="{{ m3u_link }}">{{ m3u_link }}</a>
@@ -82,8 +88,8 @@
         </tr>
         {% for url, status, channels in m3u_status %}
         <tr>
-            <td>{{ url }}</td>
-            <td>{{ status }}</td>
+            <td><a href="{{ url }}" target="_blank">{{ url }}</a></td>
+            <td class="{{ 'success' if status == 'Funzionante' else 'error' }}">{{ status }}</td>
             <td>{{ channels }}</td>
         </tr>
         {% endfor %}
