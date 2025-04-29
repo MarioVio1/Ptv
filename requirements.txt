@@ -3,3 +3,6 @@ requests
 schedule
 gunicorn
 urllib3
+redis
+flask-compress
+prometheus-flask-exporter
