@@ -11,6 +11,7 @@ import urllib.parse
 import os
 import logging
 import redis
+from redis.exceptions import ConnectionError, RedisError
 from flask_compress import Compress
 from prometheus_flask_exporter import PrometheusMetrics
 
@@ -32,11 +33,24 @@ pastebin_paste_key = "2JXd4cDJ"
 pastebin_user_key = None
 
 # Configurazione Redis
-redis_client = redis.Redis(
-    host=os.getenv("REDIS_HOST", "localhost"),
-    port=int(os.getenv("REDIS_PORT", 6379)),
-    decode_responses=True
-)
+CACHE_FILE = "/tmp/playlist.m3u"  # Percorso per fallback su disco
+try:
+    redis_client = redis.Redis(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT", 6379)),
+        decode_responses=True,
+        socket_timeout=5,
+        socket_connect_timeout=5
+    )
+    # Test connessione
+    redis_client.ping()
+    add_log("Connessione a Redis riuscita")
+except ConnectionError as e:
+    add_log(f"Errore connessione Redis: {e}. Cache disabilitata, uso fallback su disco")
+    redis_client = None  # Fallback senza cache
+except RedisError as e:
+    add_log(f"Errore Redis: {e}. Cache disabilitata, uso fallback su disco")
+    redis_client = None
 
 # Variabili per lo stato
 merged_playlist = "#EXTM3U\n"
@@ -63,6 +77,48 @@ def add_log(message):
     logs.append(f"{datetime.now()}: {message}")
     logs = logs[-50:]
     logger.info(message)
+
+def save_to_cache():
+    """Salva la playlist in cache (Redis o disco)."""
+    try:
+        if redis_client:
+            redis_client.set("playlist", merged_playlist, ex=3600)  # Cache per 1 ora
+            add_log("Playlist salvata in cache Redis")
+        else:
+            with open(CACHE_FILE, "w") as f:
+                f.write(merged_playlist)
+            add_log("Playlist salvata su disco come fallback")
+    except RedisError as e:
+        add_log(f"Errore salvataggio cache Redis: {e}")
+        with open(CACHE_FILE, "w") as f:
+            f.write(merged_playlist)
+        add_log("Playlist salvata su disco come fallback")
+    except Exception as e:
+        add_log(f"Errore salvataggio cache: {e}")
+
+def get_from_cache():
+    """Recupera la playlist dalla cache (Redis o disco)."""
+    try:
+        if redis_client:
+            cached = redis_client.get("playlist")
+            if cached:
+                add_log("Playlist caricata da cache Redis")
+                return cached
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, "r") as f:
+                add_log("Playlist caricata da disco")
+                return f.read()
+        return None
+    except RedisError as e:
+        add_log(f"Errore recupero cache Redis: {e}")
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, "r") as f:
+                add_log("Playlist caricata da disco")
+                return f.read()
+        return None
+    except Exception as e:
+        add_log(f"Errore recupero cache: {e}")
+        return None
 
 def get_m3u_urls():
     """Recupera la lista degli URL M3U dal Pastebin."""
@@ -109,7 +165,7 @@ def update_playlist():
         m3u_status.append(("Nessun URL", "Errore: Pastebin non accessibile", 0))
         update_message = "Errore: Pastebin non accessibile"
         update_time = time.time() - start_time
-        redis_client.set("playlist", merged_playlist, ex=3600)
+        save_to_cache()
         return
 
     valid_channels = 0
@@ -188,7 +244,7 @@ def update_playlist():
     valid_percentage = (valid_channels / total_attempts * 100) if total_attempts > 0 else 0
     update_message = f"Playlist rigenerata: {total_channels} canali ({valid_percentage:.1f}% funzionanti)"
     add_log(f"Playlist aggiornata: {last_update} (Canali totali: {total_channels}, Tempo: {update_time:.2f}s)")
-    redis_client.set("playlist", merged_playlist, ex=3600)  # Cache per 1 ora
+    save_to_cache()
 
 @app.route("/test", methods=["POST"])
 def test_m3u():
@@ -343,6 +399,16 @@ def export_by_group():
         mimetype="audio/mpegurl"
     )
 
+@app.route("/redis_status")
+def redis_status():
+    """Verifica lo stato della connessione Redis."""
+    try:
+        if redis_client and redis_client.ping():
+            return jsonify({"status": "Active"})
+        return jsonify({"status": "Inactive"})
+    except RedisError:
+        return jsonify({"status": "Error"})
+
 schedule.every(1).hours.do(update_playlist)
 
 def run_scheduler():
@@ -375,7 +441,7 @@ def index():
 @app.route("/Coconut.m3u")
 def serve_playlist():
     try:
-        cached = redis_client.get("playlist")
+        cached = get_from_cache()
         if cached:
             return Response(cached, mimetype="audio/mpegurl")
         if merged_playlist.strip() == "#EXTM3U" or merged_playlist.strip() == f"#EXTM3U tvg-url=\"{epg_url}\"":
