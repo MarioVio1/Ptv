@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>M3U Playlist Merger</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .error { color: red; }
+        .success { color: green; }
+        .log-section { margin-top: 20px; }
+        button { padding: 10px; margin: 5px; }
+        textarea { width: 100%; height: 100px; }
+    </style>
+</head>
+<body>
+    <h1>M3U Playlist Merger</h1>
+    <p><strong>Status:</strong> <span class="{{ 'success' if total_channels > 0 else 'error' }}">{{ status }}</span></p>
+    <p><strong>Last Update:</strong> {{ last_update or 'Never' }}</p>
+    <p><strong>Total Channels:</strong> {{ total_channels }}</p>
+    <p><strong>Valid Channels:</strong> {{ valid_percentage|round(1) }}%</p>
+    <p><strong>M3U Link:</strong> <a href="{{ m3u_link }}">{{ m3u_link }}</a></p>
+    <p><strong>Update Message:</strong> {{ update_message or 'Not updated' }}</p>
+    <p><strong>Update Time:</strong> {{ update_time|round(2) }} seconds</p>
+    <p><strong>EPG URL:</strong> {{ epg_url or 'Not set' }}</p>
+
+    <form action="/regenerate" method="get">
+        <button type="submit">Regenerate Playlist</button>
+    </form>
+
+    <h2>M3U Sources</h2>
+    <table>
+        <tr>
+            <th>URL</th>
+            <th>Status</th>
+            <th>Channels</th>
+        </tr>
+        {% for url, status, count in m3u_status %}
+        <tr>
+            <td>{{ url }}</td>
+            <td class="{{ 'success' if status == 'Funzionante' else 'error' }}">{{ status }}</td>
+            <td>{{ count }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h2>Update Pastebin</h2>
+    <form action="/update_pastebin" method="post">
+        <textarea name="pastebin_urls" placeholder="Enter M3U URLs (one per line)">{{ '\n'.join([url for url, _, _ in m3u_status]) }}</textarea>
+        <button type="submit">Update Pastebin</button>
+    </form>
+
+    <h2>Set EPG</h2>
+    <form action="/set_epg" method="post">
+        <input type="text" name="epg_url" value="{{ epg_url }}" placeholder="Enter EPG URL">
+        <button type="submit">Set EPG</button>
+    </form>
+
+    <h2>Logs</h2>
+    <div class="log-section">
+        <ul>
+            {% for log in logs %}
+                <li>{{ log }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</body>
+</html>
