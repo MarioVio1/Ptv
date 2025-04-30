@@ -9,12 +9,8 @@ from urllib3.util.retry import Retry
 import io
 import os
 import logging
-from flask_compress import Compress
-from prometheus_flask_exporter import PrometheusMetrics
 
 app = Flask(__name__)
-Compress(app)  # Abilita compressione Gzip
-metrics = PrometheusMetrics(app)  # Metriche Prometheus
 
 # Configurazione logging
 logging.basicConfig(level=logging.INFO)
@@ -327,7 +323,7 @@ def check_channel():
         return jsonify({"error": "URL non fornito"}), 400
     valid, quality = validate_channel_url(url)
     add_log(f"Controllo canale {url}: {'Online' if valid else 'Offline'}, Latenza: {quality['latency'] or 'N/A'} ms")
-    return jsonify({"status": "Online" if valid else 'Offline', "quality": quality})
+    return jsonify({"status": "Online" if valid else "Offline", "quality": quality})
 
 @app.route("/export", methods=["POST"])
 def export_playlist():
