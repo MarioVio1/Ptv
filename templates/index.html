@@ -48,7 +48,10 @@
 
     <h2>Update Pastebin</h2>
     <form action="/update_pastebin" method="post">
-        <textarea name="pastebin_urls" placeholder="Enter M3U URLs (one per line)">{{ '\n'.join([url for url, _, _ in m3u_status]) }}</textarea>
+        <textarea name="pastebin_urls" placeholder="Enter M3U URLs (one per line)">
+{% for url, _, _ in m3u_status %}{{ url }}
+{% endfor %}
+        </textarea>
         <button type="submit">Update Pastebin</button>
     </form>
 
