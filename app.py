@@ -45,7 +45,7 @@ epg_url = ""
 def create_session():
     """Crea una sessione requests con retry."""
     session = requests.Session()
-    retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+    retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
     session.mount("http://", HTTPAdapter(max_retries=retries))
     session.mount("https://", HTTPAdapter(max_retries=retries))
     return session
@@ -83,7 +83,7 @@ def get_m3u_urls():
     try:
         session = create_session()
         add_log(f"Tentativo di recupero della lista M3U da {pastebin_url}")
-        response = session.get(pastebin_url, timeout=30)
+        response = session.get(pastebin_url, timeout=10)
         add_log(f"Risposta Pastebin: Stato {response.status_code}, Contenuto: {response.text[:100]}...")
         if response.status_code == 200:
             urls = [url.strip() for url in response.text.splitlines() if url.strip() and not url.strip().startswith("#")]
@@ -95,17 +95,23 @@ def get_m3u_urls():
     except requests.exceptions.RequestException as e:
         add_log(f"Errore nel recupero del Pastebin: {e}")
         return [FALLBACK_M3U_URL]
+    except Exception as e:
+        add_log(f"Errore imprevisto nel recupero del Pastebin: {e}")
+        return [FALLBACK_M3U_URL]
 
 def validate_channel_url(url):
     """Verifica se un URL di un canale è accessibile e misura la latenza."""
     try:
         session = create_session()
         start_time = time.time()
-        response = session.head(url, timeout=10, allow_redirects=True)
+        response = session.head(url, timeout=5, allow_redirects=True)
         latency = (time.time() - start_time) * 1000  # ms
         valid = response.status_code == 200
         return valid, {"latency": latency}
     except requests.exceptions.RequestException:
+        return False, {"latency": None}
+    except Exception as e:
+        add_log(f"Errore imprevisto nella validazione di {url}: {e}")
         return False, {"latency": None}
 
 def update_playlist():
@@ -120,7 +126,7 @@ def update_playlist():
     m3u_urls = get_m3u_urls()
 
     if not m3u_urls:
-        add_log("Nessun URL M3U valido recuperato dal Pastebin")
+        add_log("Nessun URL M3U valido recuperato")
         m3u_status.append(("Nessun URL", "Errore: Pastebin non accessibile", 0))
         update_message = "Errore: Pastebin non accessibile"
         update_time = time.time() - start_time
@@ -132,7 +138,7 @@ def update_playlist():
     for url in m3u_urls:
         try:
             add_log(f"Tentativo di recupero M3U da {url}")
-            response = session.get(url, timeout=30)
+            response = session.get(url, timeout=10)
             add_log(f"Risposta M3U {url}: Stato {response.status_code}, Lunghezza: {len(response.text)}")
             if response.status_code == 200:
                 lines = response.text.splitlines()
@@ -214,7 +220,7 @@ def test_m3u():
     session = create_session()
     try:
         add_log(f"Test URL M3U: {url}")
-        response = session.get(url, timeout=30)
+        response = session.get(url, timeout=10)
         if response.status_code == 200:
             lines = response.text.splitlines()
             if not lines:
