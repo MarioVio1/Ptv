@@ -83,7 +83,7 @@ def get_m3u_urls():
     try:
         session = create_session()
         add_log(f"Tentativo di recupero della lista M3U da {pastebin_url}")
-        response = session.get(pastebin_url, timeout=10)
+        response = session.get(pastebin_url, timeout=8)
         add_log(f"Risposta Pastebin: Stato {response.status_code}, Contenuto: {response.text[:100]}...")
         if response.status_code == 200:
             urls = [url.strip() for url in response.text.splitlines() if url.strip() and not url.strip().startswith("#")]
@@ -93,7 +93,7 @@ def get_m3u_urls():
             add_log(f"Errore nel recupero del Pastebin: Stato {response.status_code}")
             return [FALLBACK_M3U_URL]
     except requests.exceptions.RequestException as e:
-        add_log(f"Errore nel recupero del Pastebin: {e}")
+        add_log(f"Errore di rete nel recupero del Pastebin: {e}")
         return [FALLBACK_M3U_URL]
     except Exception as e:
         add_log(f"Errore imprevisto nel recupero del Pastebin: {e}")
@@ -104,11 +104,13 @@ def validate_channel_url(url):
     try:
         session = create_session()
         start_time = time.time()
-        response = session.head(url, timeout=5, allow_redirects=True)
+        response = session.head(url, timeout=3, allow_redirects=True)
         latency = (time.time() - start_time) * 1000  # ms
         valid = response.status_code == 200
+        add_log(f"Validazione {url}: Stato {response.status_code}, Latenza {latency:.2f}ms")
         return valid, {"latency": latency}
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        add_log(f"Errore di rete nella validazione di {url}: {e}")
         return False, {"latency": None}
     except Exception as e:
         add_log(f"Errore imprevisto nella validazione di {url}: {e}")
@@ -125,6 +127,7 @@ def update_playlist():
     session = create_session()
     m3u_urls = get_m3u_urls()
 
+    add_log(f"URL M3U da processare: {m3u_urls}")
     if not m3u_urls:
         add_log("Nessun URL M3U valido recuperato")
         m3u_status.append(("Nessun URL", "Errore: Pastebin non accessibile", 0))
@@ -138,7 +141,7 @@ def update_playlist():
     for url in m3u_urls:
         try:
             add_log(f"Tentativo di recupero M3U da {url}")
-            response = session.get(url, timeout=10)
+            response = session.get(url, timeout=8)
             add_log(f"Risposta M3U {url}: Stato {response.status_code}, Lunghezza: {len(response.text)}")
             if response.status_code == 200:
                 lines = response.text.splitlines()
@@ -149,48 +152,52 @@ def update_playlist():
                 channel_count = 0
                 i = 0
                 while i < len(lines):
-                    line = lines[i].strip()
-                    if line.startswith("#EXTINF"):
-                        j = i + 1
-                        channel_url = None
-                        while j < len(lines):
-                            next_line = lines[j].strip()
-                            if next_line and not next_line.startswith("#"):
-                                channel_url = next_line
-                                break
-                            j += 1
-                        if channel_url and channel_url not in seen_urls:
-                            name = line.split(',', 1)[-1] if ',' in line else "Unknown"
-                            group = "Default"
-                            language = "Unknown"
-                            if 'group-title="' in line:
-                                group = line.split('group-title="')[1].split('"')[0]
-                            if 'tvg-language="' in line:
-                                language = line.split('tvg-language="')[1].split('"')[0]
-                            merged_playlist += line + '\n'
-                            merged_playlist += channel_url + '\n'
-                            seen_urls.add(channel_url)
-                            valid, quality = validate_channel_url(channel_url)
-                            channels.append({
-                                "name": name,
-                                "url": channel_url,
-                                "source": url,
-                                "group": group,
-                                "language": language,
-                                "valid": valid,
-                                "quality": quality
-                            })
-                            channel_count += 1
-                            total_attempts += 1
-                            if valid:
-                                valid_channels += 1
-                            i = j
-                        else:
-                            if not channel_url:
-                                add_log(f"Nessun URL valido trovato dopo #EXTINF: {line}")
+                    try:
+                        line = lines[i].strip()
+                        if line.startswith("#EXTINF"):
+                            j = i + 1
+                            channel_url = None
+                            while j < len(lines):
+                                next_line = lines[j].strip()
+                                if next_line and not next_line.startswith("#"):
+                                    channel_url = next_line
+                                    break
+                                j += 1
+                            if channel_url and channel_url not in seen_urls:
+                                name = line.split(',', 1)[-1] if ',' in line else "Unknown"
+                                group = "Default"
+                                language = "Unknown"
+                                if 'group-title="' in line:
+                                    group = line.split('group-title="')[1].split('"')[0]
+                                if 'tvg-language="' in line:
+                                    language = line.split('tvg-language="')[1].split('"')[0]
+                                merged_playlist += line + '\n'
+                                merged_playlist += channel_url + '\n'
+                                seen_urls.add(channel_url)
+                                valid, quality = validate_channel_url(channel_url)
+                                channels.append({
+                                    "name": name,
+                                    "url": channel_url,
+                                    "source": url,
+                                    "group": group,
+                                    "language": language,
+                                    "valid": valid,
+                                    "quality": quality
+                                })
+                                channel_count += 1
+                                total_attempts += 1
+                                if valid:
+                                    valid_channels += 1
+                                i = j
                             else:
-                                add_log(f"Canale duplicato scartato: {channel_url}")
-                    i += 1
+                                if not channel_url:
+                                    add_log(f"Nessun URL valido trovato dopo #EXTINF: {line}")
+                                else:
+                                    add_log(f"Canale duplicato scartato: {channel_url}")
+                        i += 1
+                    except Exception as e:
+                        add_log(f"Errore nel parsing della riga {i} da {url}: {e}")
+                        i += 1
                 status = "Funzionante" if channel_count > 0 else "Nessun canale valido"
                 add_log(f"Successo: Aggiunto contenuto da {url} (Canali: {channel_count})")
                 m3u_status.append((url, status, channel_count))
@@ -198,7 +205,7 @@ def update_playlist():
                 add_log(f"Errore nel recupero di {url}: Stato {response.status_code}")
                 m3u_status.append((url, f"Errore: Stato {response.status_code}", 0))
         except requests.exceptions.RequestException as e:
-            add_log(f"Errore nel recupero di {url}: {e}")
+            add_log(f"Errore di rete nel recupero di {url}: {e}")
             m3u_status.append((url, f"Errore: {str(e)}", 0))
         except Exception as e:
             add_log(f"Errore imprevisto durante il recupero di {url}: {e}")
@@ -220,7 +227,7 @@ def test_m3u():
     session = create_session()
     try:
         add_log(f"Test URL M3U: {url}")
-        response = session.get(url, timeout=10)
+        response = session.get(url, timeout=8)
         if response.status_code == 200:
             lines = response.text.splitlines()
             if not lines:
@@ -233,7 +240,7 @@ def test_m3u():
             add_log(f"Test fallito: Stato {response.status_code} per {url}")
             return jsonify({"status": f"Errore: Stato {response.status_code}", "channels": 0})
     except requests.exceptions.RequestException as e:
-        add_log(f"Test fallito: Errore {e} per {url}")
+        add_log(f"Test fallito: Errore di rete {e} per {url}")
         return jsonify({"status": f"Errore: {str(e)}", "channels": 0})
     except Exception as e:
         add_log(f"Errore imprevisto nel test di {url}: {e}")
@@ -287,7 +294,7 @@ def update_pastebin():
             add_log(f"Errore nell'aggiornamento del Pastebin: {response.text}")
             return jsonify({"error": f"Errore nell'aggiornamento del Pastebin: {response.text}"}), 500
     except requests.exceptions.RequestException as e:
-        add_log(f"Errore nell'aggiornamento del Pastebin: {e}")
+        add_log(f"Errore di rete nell'aggiornamento del Pastebin: {e}")
         return jsonify({"error": str(e)}), 500
     except Exception as e:
         add_log(f"Errore imprevisto nell'aggiornamento del Pastebin: {e}")
@@ -311,7 +318,7 @@ def validate_epg():
     epg_url = request.form.get("epg_url")
     try:
         session = create_session()
-        response = session.get(epg_url, timeout=10)
+        response = session.get(epg_url, timeout=8)
         if response.status_code == 200:
             add_log(f"EPG valido: {epg_url}")
             return jsonify({"message": "EPG valido", "size": len(response.text)})
@@ -416,10 +423,12 @@ def serve_playlist():
 @app.route("/regenerate")
 def regenerate_playlist():
     try:
+        add_log("Inizio rigenerazione playlist")
         update_playlist()
+        add_log("Rigenerazione playlist completata")
         return redirect("/")
     except Exception as e:
-        add_log(f"Errore nella rigenerazione della playlist: {e}")
+        add_log(f"Errore nella rigenerazione della playlist: {str(e)}")
         return Response(f"Errore interno: {str(e)}", status=500)
 
 @app.route("/download")
@@ -448,6 +457,7 @@ def get_logs():
 
 if __name__ == "__main__":
     try:
+        add_log("Avvio applicazione")
         update_playlist()
         app.run(host="0.0.0.0", port=5000)
     except Exception as e:
