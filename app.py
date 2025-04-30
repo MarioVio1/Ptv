@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configurazione Pastebin
-pastebin_url = "https://pastebin.com/raw/YOUR_PASTEBIN_KEY"  # Sostituisci con il nuovo Pastebin
+pastebin_url = "https://pastebin.com/raw/2JXd4cDJ"  # Sostituisci con il nuovo Pastebin
 pastebin_api_key = os.getenv("PASTEBIN_API_KEY", "YOUR_PASTEBIN_API_KEY")
 pastebin_dev_key = os.getenv("PASTEBIN_DEV_KEY", "YOUR_PASTEBIN_DEV_KEY")
 pastebin_username = os.getenv("PASTEBIN_USERNAME", "Mariovio")
