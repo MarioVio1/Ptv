@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -27,7 +27,6 @@
                 <p><strong>Status:</strong> <span class="{{ 'success' if total_channels > 0 else 'error' }}">{{ status }}</span></p>
                 <p><strong>Last Update:</strong> {{ last_update or 'Never' }}</p>
                 <p><strong>Total Channels:</strong> {{ total_channels }}</p>
-                <p><strong>Valid Channels:</strong> {{ valid_percentage|round(1) }}%</p>
                 <p><strong>M3U Link:</strong> <a href="{{ m3u_link }}" class="text-primary">{{ m3u_link }}</a></p>
                 <p><strong>Update Message:</strong> {{ update_message or 'Not updated' }}</p>
                 <p><strong>Update Time:</strong> {{ update_time|round(2) }} seconds</p>
