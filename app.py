@@ -83,7 +83,7 @@ def get_m3u_urls():
     try:
         session = create_session()
         add_log(f"Tentativo di recupero della lista M3U da {pastebin_url}")
-        response = session.get(pastebin_url, timeout=8)
+        response = session.get(pastebin_url, timeout=10)
         add_log(f"Risposta Pastebin: Stato {response.status_code}, Contenuto: {response.text[:100]}...")
         if response.status_code == 200:
             urls = [url.strip() for url in response.text.splitlines() if url.strip() and not url.strip().startswith("#")]
@@ -100,21 +100,19 @@ def get_m3u_urls():
         return [FALLBACK_M3U_URL]
 
 def validate_channel_url(url):
-    """Verifica se un URL di un canale è accessibile e misura la latenza."""
+    """Verifica se un URL di un canale è accessibile."""
     try:
         session = create_session()
-        start_time = time.time()
-        response = session.head(url, timeout=3, allow_redirects=True)
-        latency = (time.time() - start_time) * 1000  # ms
+        response = session.head(url, timeout=5, allow_redirects=True)
         valid = response.status_code == 200
-        add_log(f"Validazione {url}: Stato {response.status_code}, Latenza {latency:.2f}ms")
-        return valid, {"latency": latency}
+        add_log(f"Validazione {url}: Stato {response.status_code}")
+        return valid, {"status": response.status_code}
     except requests.exceptions.RequestException as e:
         add_log(f"Errore di rete nella validazione di {url}: {e}")
-        return False, {"latency": None}
+        return False, {"status": None}
     except Exception as e:
         add_log(f"Errore imprevisto nella validazione di {url}: {e}")
-        return False, {"latency": None}
+        return False, {"status": None}
 
 def update_playlist():
     """Aggiorna la playlist M3U unendo gli URL dal Pastebin."""
@@ -141,7 +139,7 @@ def update_playlist():
     for url in m3u_urls:
         try:
             add_log(f"Tentativo di recupero M3U da {url}")
-            response = session.get(url, timeout=8)
+            response = session.get(url, timeout=10)
             add_log(f"Risposta M3U {url}: Stato {response.status_code}, Lunghezza: {len(response.text)}")
             if response.status_code == 200:
                 lines = response.text.splitlines()
@@ -166,11 +164,8 @@ def update_playlist():
                             if channel_url and channel_url not in seen_urls:
                                 name = line.split(',', 1)[-1] if ',' in line else "Unknown"
                                 group = "Default"
-                                language = "Unknown"
                                 if 'group-title="' in line:
                                     group = line.split('group-title="')[1].split('"')[0]
-                                if 'tvg-language="' in line:
-                                    language = line.split('tvg-language="')[1].split('"')[0]
                                 merged_playlist += line + '\n'
                                 merged_playlist += channel_url + '\n'
                                 seen_urls.add(channel_url)
@@ -180,7 +175,6 @@ def update_playlist():
                                     "url": channel_url,
                                     "source": url,
                                     "group": group,
-                                    "language": language,
                                     "valid": valid,
                                     "quality": quality
                                 })
@@ -227,7 +221,7 @@ def test_m3u():
     session = create_session()
     try:
         add_log(f"Test URL M3U: {url}")
-        response = session.get(url, timeout=8)
+        response = session.get(url, timeout=10)
         if response.status_code == 200:
             lines = response.text.splitlines()
             if not lines:
@@ -318,7 +312,7 @@ def validate_epg():
     epg_url = request.form.get("epg_url")
     try:
         session = create_session()
-        response = session.get(epg_url, timeout=8)
+        response = session.get(epg_url, timeout=10)
         if response.status_code == 200:
             add_log(f"EPG valido: {epg_url}")
             return jsonify({"message": "EPG valido", "size": len(response.text)})
@@ -335,7 +329,7 @@ def check_channel():
     if not url:
         return jsonify({"error": "URL non fornito"}), 400
     valid, quality = validate_channel_url(url)
-    add_log(f"Controllo canale {url}: {'Online' if valid else 'Offline'}, Latenza: {quality['latency'] or 'N/A'} ms")
+    add_log(f"Controllo canale {url}: {'Online' if valid else 'Offline'}, Stato: {quality['status'] or 'N/A'}")
     return jsonify({"status": "Online" if valid else "Offline", "quality": quality})
 
 @app.route("/export", methods=["POST"])
