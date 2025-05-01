@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -28,11 +28,12 @@
                 <p><strong>Last Update:</strong> {{ last_update or 'Never' }}</p>
                 <p><strong>Total Channels:</strong> {{ total_channels }}</p>
                 <p><strong>M3U Link:</strong> <a href="{{ m3u_link }}" class="text-primary">{{ m3u_link }}</a></p>
+                <p><strong>EPG Link:</strong> <a href="{{ epg_link }}" class="text-primary">{{ epg_link }}</a></p>
                 <p><strong>Update Message:</strong> {{ update_message or 'Not updated' }}</p>
                 <p><strong>Update Time:</strong> {{ update_time|round(2) }} seconds</p>
                 <p><strong>EPG URL:</strong> {{ epg_url or 'Not set' }}</p>
                 <form action="/regenerate" method="get">
-                    <button type="submit" class="btn btn-primary">Regenerate Playlist</button>
+                    <button type="submit" class="btn btn-primary">Regenerate Playlist & EPG</button>
                 </form>
             </div>
         </div>
