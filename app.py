@@ -14,9 +14,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configurazione Pastebin
-pastebin_url = "https://pastebin.com/raw/2JXd4cDJ"  # Sostituisci con il nuovo Pastebin
-pastebin_api_key = os.getenv("PASTEBIN_API_KEY", "YOUR_PASTEBIN_API_KEY")
-pastebin_dev_key = os.getenv("PASTEBIN_DEV_KEY", "YOUR_PASTEBIN_DEV_KEY")
+pastebin_url = "https://pastebin.com/raw/YOUR_PASTEBIN_KEY"  # Sostituisci con il nuovo Pastebin
+pastebin_api_key = os.getenv("PASTEBIN_API_KEY", "hORVwXV_xxvjnW4B-mhabsU71Da32Idk")
+pastebin_dev_key = os.getenv("PASTEBIN_DEV_KEY", "hORVwXV_xxvjnW4B-mhabsU71Da32Idk")
 pastebin_username = os.getenv("PASTEBIN_USERNAME", "Mariovio")
 pastebin_password = os.getenv("PASTEBIN_PASSWORD")
 pastebin_paste_key = "YOUR_PASTEBIN_KEY"  # Sostituisci con il nuovo Pastebin
@@ -24,6 +24,9 @@ pastebin_user_key = None
 
 # URL M3U di fallback
 FALLBACK_M3U_URL = "https://iptv-org.github.io/iptv/channels/it.m3u"
+
+# URL EPG italiano (fonte legale)
+EPG_URL = "https://xmltv-epg.github.io/xmltv/it.xml"  # Sostituisci con una fonte legale se necessario
 
 # Variabili per lo stato
 merged_playlist = "#EXTM3U\n"
@@ -33,7 +36,7 @@ m3u_status = []
 update_message = None
 update_time = 0
 logs = []
-epg_url = ""
+epg_content = ""
 
 def add_log(message):
     """Aggiunge un messaggio ai log."""
@@ -59,11 +62,28 @@ def get_m3u_urls():
         add_log(f"Errore nel recupero del Pastebin: {e}")
         return [FALLBACK_M3U_URL]
 
+def update_epg():
+    """Recupera l'EPG italiano."""
+    global epg_content
+    try:
+        add_log(f"Tentativo di recupero EPG da {EPG_URL}")
+        response = requests.get(EPG_URL, timeout=10)
+        add_log(f"Risposta EPG: Stato {response.status_code}, Lunghezza: {len(response.text)}")
+        if response.status_code == 200:
+            epg_content = response.text
+            add_log("EPG aggiornato con successo")
+        else:
+            add_log(f"Errore nel recupero dell'EPG: Stato {response.status_code}")
+            epg_content = "<tv></tv>"  # EPG vuoto in caso di errore
+    except Exception as e:
+        add_log(f"Errore nel recupero dell'EPG: {e}")
+        epg_content = "<tv></tv>"
+
 def update_playlist():
     """Aggiorna la playlist M3U unendo gli URL dal Pastebin."""
     global merged_playlist, last_update, total_channels, m3u_status, update_message, update_time
     start_time = time.time()
-    merged_playlist = f"#EXTM3U tvg-url=\"{epg_url}\"\n" if epg_url else "#EXTM3U\n"
+    merged_playlist = f"#EXTM3U tvg-url=\"{EPG_URL}\"\n"
     seen_urls = set()
     m3u_status = []
     m3u_urls = get_m3u_urls()
@@ -181,18 +201,31 @@ def update_pastebin():
 
 @app.route("/set_epg", methods=["POST"])
 def set_epg():
-    global epg_url
+    global EPG_URL
     try:
         new_epg_url = request.form.get("epg_url", "").strip()
-        epg_url = new_epg_url
-        add_log(f"URL EPG configurato: {epg_url}")
+        EPG_URL = new_epg_url
+        add_log(f"URL EPG configurato: {EPG_URL}")
+        update_epg()
         update_playlist()
-        return jsonify({"message": f"URL EPG configurato: {epg_url}"})
+        return jsonify({"message": f"URL EPG configurato: {EPG_URL}"})
     except Exception as e:
         add_log(f"Errore nella configurazione dell'EPG: {e}")
         return jsonify({"error": f"Errore: {str(e)}"}), 500
 
+@app.route("/epg.xml")
+def serve_epg():
+    try:
+        if not epg_content or epg_content == "<tv></tv>":
+            add_log("EPG non disponibile")
+            return Response("Errore: EPG non disponibile.", mimetype="text/plain")
+        return Response(epg_content, mimetype="application/xml")
+    except Exception as e:
+        add_log(f"Errore nel servire l'EPG: {e}")
+        return Response(f"Errore interno: {str(e)}", status=500)
+
 schedule.every(1).hours.do(update_playlist)
+schedule.every(1).hours.do(update_epg)
 
 def run_scheduler():
     while True:
@@ -210,10 +243,11 @@ def index():
                               last_update=last_update,
                               total_channels=total_channels,
                               m3u_status=m3u_status,
-                              m3u_link="https://YOUR_RENDER_URL.onrender.com/Coconut.m3u",  # Sostituisci con il nuovo URL
+                              m3u_link="https://YOUR_USERNAME-ptv.hf.space/Coconut.m3u",  # Sostituisci con l'URL di Hugging Face
+                              epg_link="https://YOUR_USERNAME-ptv.hf.space/epg.xml",  # Sostituisci con l'URL di Hugging Face
                               update_message=update_message,
                               update_time=update_time,
-                              epg_url=epg_url)
+                              epg_url=EPG_URL)
     except Exception as e:
         add_log(f"Errore nel rendering della pagina index: {e}")
         return Response(f"Errore interno: {str(e)}", status=500)
@@ -221,8 +255,8 @@ def index():
 @app.route("/Coconut.m3u")
 def serve_playlist():
     try:
-        if merged_playlist.strip() == "#EXTM3U" or merged_playlist.strip() == f"#EXTM3U tvg-url=\"{epg_url}\"":
-            return Response("Errore: Nessun canale disponibile. Controlla i log su Render.", mimetype="text/plain")
+        if merged_playlist.strip() == "#EXTM3U" or merged_playlist.strip() == f"#EXTM3U tvg-url=\"{EPG_URL}\"":
+            return Response("Errore: Nessun canale disponibile. Controlla i log.", mimetype="text/plain")
         return Response(merged_playlist, mimetype="audio/mpegurl")
     except Exception as e:
         add_log(f"Errore nel servire la playlist: {e}")
@@ -233,7 +267,8 @@ def regenerate_playlist():
     try:
         add_log("Inizio rigenerazione playlist")
         update_playlist()
-        add_log("Rigenerazione playlist completata")
+        update_epg()
+        add_log("Rigenerazione playlist ed EPG completata")
         return redirect("/")
     except Exception as e:
         add_log(f"Errore nella rigenerazione della playlist: {str(e)}")
@@ -251,7 +286,8 @@ if __name__ == "__main__":
     try:
         add_log("Avvio applicazione")
         update_playlist()
-        app.run(host="0.0.0.0", port=5000)
+        update_epg()
+        app.run(host="0.0.0.0", port=7860)  # Porta 7860 per Hugging Face Spaces
     except Exception as e:
         add_log(f"Errore avvio applicazione: {e}")
         raise
